@@ -35,16 +35,18 @@ fun SettingsScreen() {
     val app = context.applicationContext as WarrantyVaultApplication
     val exportImportService = remember { ExportImportService(context, app.database) }
     val scope = rememberCoroutineScope()
+    // Import pipeline state: preview -> user confirmation -> commit.
+    var importPreview by remember { mutableStateOf<com.warrantyvault.service.ExportImportService.ImportPreview?>(null) }
+    var importing by remember { mutableStateOf(false) }
+    var importSummary by remember { mutableStateOf<com.warrantyvault.service.ExportImportService.ImportSummary?>(null) }
+
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
             scope.launch {
-                val result = exportImportService.importJson(uri)
-                val message = if (result.errors.isEmpty()) {
-                    "Imported ${result.imported} items"
-                } else {
-                    "Import completed with ${result.failed} failures: ${result.errors.joinToString(", ")}"
-                }
-                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                importing = true
+                importSummary = null
+                importPreview = exportImportService.buildPreview(uri)
+                importing = false
             }
         }
     }
@@ -165,12 +167,60 @@ fun SettingsScreen() {
                                 modifier = Modifier.weight(1f)
                             )
                             WarrantyGhostButton(
-                                text = "Import Data",
-                                onClick = { importLauncher.launch("*/*") },
+                                text = if (importing) "Reading file…" else "Import Data (JSON)",
+                                onClick = { if (!importing) importLauncher.launch("application/json") },
+                                enabled = !importing,
                                 modifier = Modifier.weight(1f)
                             )
                         }
                     }
+                }
+
+                // Import preview dialog state lives here; dialogs render at the root.
+                importPreview?.let { preview ->
+                    AlertDialog(
+                        onDismissRequest = { importPreview = null },
+                        title = { Text("Confirm import") },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Ready to import: ${preview.valid.size} record(s)")
+                                if (preview.duplicatesInFile > 0) {
+                                    Text("Duplicates within file: ${preview.duplicatesInFile} (will be skipped)", color = MaterialTheme.colorScheme.tertiary)
+                                }
+                                if (preview.rejected.isNotEmpty()) {
+                                    Text("Rejected: ${preview.rejected.size}", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                                    preview.rejected.take(5).forEach {
+                                        Text("Row ${it.rowIndex + 1}: ${it.reason}", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                                    }
+                                    if (preview.rejected.size > 5) Text("…and ${preview.rejected.size - 5} more", fontSize = 12.sp)
+                                }
+                                if (preview.valid.isEmpty()) {
+                                    Text("Nothing can be imported from this file.", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    val p = preview
+                                    importPreview = null
+                                    scope.launch {
+                                        val summary = exportImportService.commitImport(p)
+                                        importSummary = summary
+                                        Toast.makeText(
+                                            context,
+                                            "Imported: ${summary.imported} · Rejected: ${summary.rejected} · Duplicates: ${summary.duplicatesSkipped}",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                },
+                                enabled = preview.valid.isNotEmpty()
+                            ) { Text("Import ${preview.valid.size}") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { importPreview = null }) { Text("Cancel") }
+                        }
+                    )
                 }
 
                 // About Section

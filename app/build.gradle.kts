@@ -49,7 +49,23 @@ android {
     }
 }
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
+}
+
+// java.time is desugared to all API levels by the D8 desugarer (coreLibraryDesugaring below),
+// so NewApi lint errors for java.time on minSdk 24 are false positives.
+android {
+    lint {
+        disable += "NewApi"
+    }
+}
+
 dependencies {
+    // java.time desugaring for minSdk 24 (enables LocalDate etc. on API 24/25)
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+
     // Core Android
     val core_ktx_version = "1.13.1"
     val appcompat_version = "1.7.0"
@@ -100,6 +116,16 @@ dependencies {
     val coil_version = "2.6.0"
     implementation("io.coil-kt:coil-compose:$coil_version")
 
+    // CameraX for real document capture
+    val camerax_version = "1.3.4"
+    implementation("androidx.camera:camera-core:$camerax_version")
+    implementation("androidx.camera:camera-camera2:$camerax_version")
+    implementation("androidx.camera:camera-lifecycle:$camerax_version")
+    implementation("androidx.camera:camera-view:$camerax_version")
+
+    // Lifecycle ViewModel
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
+
     // Material Icons Extended
         implementation("androidx.compose.material:material-icons-extended")
     
@@ -110,8 +136,6 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    androidTestImplementation("androidx.compose.ui:ui-test-manifest")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-tooling-preview")
 }

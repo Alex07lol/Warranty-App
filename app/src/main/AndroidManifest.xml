@@ -4,15 +4,10 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:name=".WarrantyVaultApplication"
@@ -25,7 +20,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.WarrantyVault"
         tools:targetApi="31">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -38,6 +33,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.CameraCaptureActivity"
+            android:exported="false"
+            android:label="Capture Document" />
+
         <receiver
             android:name=".notification.NotificationBootReceiver"
             android:exported="true"
@@ -46,10 +46,5 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
-
-        <service
-            android:name=".notification.NotificationWorkerService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
     </application>
 </manifest>

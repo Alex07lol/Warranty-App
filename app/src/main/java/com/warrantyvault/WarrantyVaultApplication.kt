@@ -1,8 +1,12 @@
 package com.warrantyvault
 
 import android.app.Application
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
 import com.warrantyvault.data.AppDatabase
 import com.warrantyvault.data.User
+import com.warrantyvault.worker.ExpiryCheckWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -13,11 +17,25 @@ class WarrantyVaultApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Verify & schedule the periodic warranty expiry check at app start.
+        ExpiryCheckWorker.schedule(this)
+
+        // POST_NOTIFICATIONS runtime permission (API 33+). The worker silently skips
+        // system notifications when this is denied; in-app alerts still work.
+        if (Build.VERSION.SDK_INT >= 33) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, android.Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                com.warrantyvault.notification.NotificationPermissionHelper.request(this)
+            }
+        }
+
         // Seed default demo user and products if empty
         CoroutineScope(Dispatchers.IO).launch {
             val userDao = database.userDao()
             val productDao = database.productDao()
-            
+
             val defaultUser = userDao.getUserByIdSuspend(1L)
             if (defaultUser == null) {
                 userDao.insert(
@@ -35,7 +53,7 @@ class WarrantyVaultApplication : Application() {
                 val now = System.currentTimeMillis()
                 val day = 86400000L
 
-                productDao.insert(
+                productDao.insertProduct(
                     com.warrantyvault.data.Product(
                         userId = 1L,
                         productName = "Dell XPS 15 Laptop",
@@ -54,7 +72,7 @@ class WarrantyVaultApplication : Application() {
                     )
                 )
 
-                productDao.insert(
+                productDao.insertProduct(
                     com.warrantyvault.data.Product(
                         userId = 1L,
                         productName = "Samsung Galaxy S23",
@@ -77,7 +95,7 @@ class WarrantyVaultApplication : Application() {
                     )
                 )
 
-                productDao.insert(
+                productDao.insertProduct(
                     com.warrantyvault.data.Product(
                         userId = 1L,
                         productName = "LG 4K OLED TV",

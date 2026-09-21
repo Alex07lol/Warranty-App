@@ -5,8 +5,10 @@ import android.net.Uri
 import android.os.Environment
 import com.warrantyvault.data.AppDatabase
 import com.warrantyvault.data.Product
+import com.warrantyvault.ocr.DateUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -16,6 +18,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import java.io.OutputStream
 import java.text.SimpleDateFormat
+import java.time.LocalDate
 import java.util.Date
 import java.util.Locale
 
@@ -26,16 +29,16 @@ class ExportImportService(private val context: Context, private val db: AppDatab
         prettyPrint = true
     }
 
-    // CSV Headers matching web version
     private val CSV_HEADERS = listOf(
         "productName", "brand", "model", "category", "serialNumber", "purchaseDate",
         "purchasePrice", "currency", "purchaseStore",
         "warrantyExpiryDate", "lifecycleStatus", "serviceHistory"
     )
 
-    // Export all products to JSON
+    // ---------------- Export (unchanged behavior, preserved) ----------------
+
     suspend fun exportJson(): Uri = withContext(Dispatchers.IO) {
-        val products = db.productDao().getAllForUser(1) // Single local user
+        val products = db.productDao().getAllForUser(currentUserId())
         val productIds = products.map { it.id }
         val services = db.serviceHistoryDao().getByProductIds(productIds)
         val warranties = db.warrantyPeriodDao().getByProductIds(productIds)
@@ -49,7 +52,7 @@ class ExportImportService(private val context: Context, private val db: AppDatab
             "products" to products.map { product ->
                 val productServices = serviceByProduct[product.id] ?: emptyList()
                 val productWarranties = warrantyByProduct[product.id] ?: emptyList()
-                
+
                 mapOf(
                     "id" to product.id,
                     "productName" to product.productName,
@@ -57,11 +60,11 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                     "model" to product.model,
                     "category" to product.category,
                     "serialNumber" to product.serialNumber,
-                    "purchaseDate" to product.purchaseDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) },
+                    "purchaseDate" to product.purchaseDate?.let { epochToDate(it) },
                     "purchasePrice" to product.purchasePrice,
                     "currency" to product.currency,
                     "purchaseStore" to product.purchaseStore,
-                    "warrantyExpiryDate" to product.warrantyExpiryDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) },
+                    "warrantyExpiryDate" to product.warrantyExpiryDate?.let { epochToDate(it) },
                     "warrantyPeriodMonths" to product.warrantyPeriodMonths,
                     "warrantyProvider" to product.warrantyProvider,
                     "warrantyProviderType" to product.warrantyProviderType,
@@ -75,19 +78,19 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                             "type" to w.type,
                             "provider" to w.provider,
                             "coverage" to w.coverage,
-                            "startDate" to w.startDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) },
-                            "expiryDate" to w.expiryDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) }
+                            "startDate" to w.startDate?.let { epochToDate(it) },
+                            "expiryDate" to w.expiryDate?.let { epochToDate(it) }
                         )
                     },
                     "serviceHistory" to productServices.map { s ->
                         mapOf(
-                            "serviceDate" to SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(s.serviceDate)),
+                            "serviceDate" to epochToDate(s.serviceDate),
                             "serviceType" to s.serviceType,
                             "serviceProvider" to s.serviceProvider,
                             "cost" to s.cost,
                             "currency" to s.currency,
                             "description" to s.description,
-                            "nextServiceDate" to s.nextServiceDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) }
+                            "nextServiceDate" to s.nextServiceDate?.let { epochToDate(it) }
                         )
                     }
                 )
@@ -98,9 +101,8 @@ class ExportImportService(private val context: Context, private val db: AppDatab
         return@withContext saveToDownloads(jsonString, "warrantyvault-export-${System.currentTimeMillis()}.json", "application/json")
     }
 
-    // Export all products to CSV (RFC 4180)
     suspend fun exportCsv(): Uri = withContext(Dispatchers.IO) {
-        val products = db.productDao().getAllForUser(1)
+        val products = db.productDao().getAllForUser(currentUserId())
         val productIds = products.map { it.id }
         val services = db.serviceHistoryDao().getByProductIds(productIds)
         val serviceByProduct = services.groupBy { it.productId }
@@ -112,11 +114,11 @@ class ExportImportService(private val context: Context, private val db: AppDatab
             val productServices = serviceByProduct[product.id] ?: emptyList()
             val serviceStr = productServices.map { s ->
                 listOf(
-                    SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(s.serviceDate)),
+                    epochToDate(s.serviceDate),
                     s.serviceType,
                     s.serviceProvider ?: "",
                     s.cost?.toString() ?: "",
-                    s.nextServiceDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) } ?: ""
+                    s.nextServiceDate?.let { epochToDate(it) } ?: ""
                 ).filter { it.isNotBlank() }.joinToString(" | ")
             }.joinToString(" ;; ")
 
@@ -126,11 +128,11 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                 escapeCsv(product.model ?: ""),
                 escapeCsv(product.category ?: ""),
                 escapeCsv(product.serialNumber ?: ""),
-                escapeCsv(product.purchaseDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) } ?: ""),
+                escapeCsv(product.purchaseDate?.let { epochToDate(it) } ?: ""),
                 escapeCsv(product.purchasePrice?.toString() ?: ""),
                 escapeCsv(product.currency),
                 escapeCsv(product.purchaseStore ?: ""),
-                escapeCsv(product.warrantyExpiryDate?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it)) } ?: ""),
+                escapeCsv(product.warrantyExpiryDate?.let { epochToDate(it) } ?: ""),
                 escapeCsv(product.lifecycleStatus),
                 escapeCsv(serviceStr)
             )
@@ -141,20 +143,23 @@ class ExportImportService(private val context: Context, private val db: AppDatab
         return@withContext saveToDownloads(csvString, "warrantyvault-export-${System.currentTimeMillis()}.csv", "text/csv")
     }
 
+    private fun epochToDate(millis: Long): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(millis))
+
+    private fun currentUserId(): Long =
+        (context.applicationContext as com.warrantyvault.WarrantyVaultApplication).currentUserId
+
     private fun escapeCsv(value: String): String {
         var s = value
-        // Formula injection guard
         if (s.startsWith("=") || s.startsWith("+") || s.startsWith("-") || s.startsWith("@") || s.startsWith("\t")) {
             s = "'$s"
         }
-        // RFC 4180: quote if contains comma, quote, or newline
         if (s.contains(",") || s.contains("\"") || s.contains("\n") || s.contains("\r")) {
             s = "\"${s.replace("\"", "\"\"")}\""
         }
         return s
     }
 
-    // Save file to Downloads using MediaStore
     private fun saveToDownloads(content: String, fileName: String, mimeType: String): Uri {
         val resolver = context.contentResolver
         val contentValues = android.content.ContentValues().apply {
@@ -169,149 +174,239 @@ class ExportImportService(private val context: Context, private val db: AppDatab
         return uri
     }
 
-    // Import from JSON
-    suspend fun importJson(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext ImportResult(0, 0, listOf("Failed to open file"))
-        val jsonString = inputStream.reader().readText()
-        
-        val parsed = try {
-            json.decodeFromString<JsonElement>(jsonString)
-        } catch (e: Exception) {
-            return@withContext ImportResult(0, 0, listOf("Invalid JSON: ${e.message}"))
+    // ---------------- Import: parse -> normalize -> validate -> preview -> commit ----------------
+
+    /** Result of parsing a file into validated candidates (no DB writes). */
+    data class ImportPreview(
+        val valid: List<ParsedProduct>,
+        val rejected: List<ImportIssue>,
+        val duplicatesInFile: Int
+    )
+
+    data class ParsedProduct(
+        val productName: String,
+        val brand: String? = null,
+        val model: String? = null,
+        val category: String? = null,
+        val serialNumber: String? = null,
+        val purchaseDate: Long? = null,
+        val purchasePrice: Double? = null,
+        val currency: String = "USD",
+        val purchaseStore: String? = null,
+        val warrantyExpiryDate: Long? = null,
+        val warrantyPeriodMonths: Int? = null,
+        val warrantyProvider: String? = null,
+        val warrantyProviderType: String? = null,
+        val warrantyContact: String? = null,
+        val warrantyWebsite: String? = null,
+        val lifecycleStatus: String = "owned",
+        val tags: String = "[]",
+        val notes: String? = null
+    )
+
+    data class ImportIssue(val rowIndex: Int, val reason: String)
+
+    @Serializable
+    data class ImportSummary(
+        val imported: Int,
+        val rejected: Int,
+        val duplicatesSkipped: Int,
+        val warnings: List<String>
+    )
+
+    suspend fun buildPreview(uri: Uri): ImportPreview = withContext(Dispatchers.IO) {
+        val text = readText(uri)
+            ?: return@withContext ImportPreview(emptyList(), listOf(ImportIssue(-1, "Failed to open file")), 0)
+
+        val mime = context.contentResolver.getType(uri) ?: ""
+        val rows: List<Map<String, String?>> = when {
+            mime.contains("json") || text.trimStart().startsWith("{") || text.trimStart().startsWith("[") ->
+                parseJsonRows(text).fold(
+                    onSuccess = { it },
+                    onFailure = { return@withContext ImportPreview(emptyList(), listOf(ImportIssue(-1, "Invalid JSON: ${it.message}")), 0) }
+                )
+            mime.contains("csv") || mime.contains("comma") -> parseCsv(text).map { r -> r.mapValues { it.value as String? } }
+            else -> return@withContext ImportPreview(
+                emptyList(),
+                listOf(ImportIssue(-1, "Unsupported file type. Please choose a JSON export.")),
+                0
+            )
         }
 
-        val productsArray = when {
-            parsed is kotlinx.serialization.json.JsonObject && parsed.containsKey("products") -> parsed["products"]?.jsonArray
-            parsed is kotlinx.serialization.json.JsonArray -> parsed
-            else -> null
-        } ?: return@withContext ImportResult(0, 0, listOf("No products array found"))
+        val valid = mutableListOf<ParsedProduct>()
+        val rejected = mutableListOf<ImportIssue>()
+        val seenSerials = mutableSetOf<String>()
+        var inFileDupes = 0
 
-        var imported = 0
-        var failed = 0
-        val errors = mutableListOf<String>()
+        for ((index, row) in rows.withIndex()) {
+            val name = row["productName"]?.trim()
+            if (name.isNullOrEmpty()) {
+                rejected.add(ImportIssue(index, "productName is required"))
+                continue
+            }
+            if (row["purchaseDate"].isNullOrEmpty() && row["warrantyExpiryDate"].isNullOrEmpty() && row["warrantyPeriodMonths"].isNullOrEmpty()) {
+                // Not fatal, but flagged later as a warning in the summary.
+            }
+            val serial = row["serialNumber"]?.trim()?.ifBlank { null }
+            if (serial != null && !seenSerials.add(serial.uppercase())) {
+                inFileDupes++
+                rejected.add(ImportIssue(index, "Duplicate serial in file: $serial"))
+                continue
+            }
+            val price = row["purchasePrice"]?.let { parseFlexibleDouble(it) }
+            if (row["purchasePrice"] != null && row["purchasePrice"]!!.isNotBlank() && price == null) {
+                rejected.add(ImportIssue(index, "Invalid purchasePrice: '${row["purchasePrice"]}'"))
+                continue
+            }
+            val purchaseDate = row["purchaseDate"]?.let { parseFlexibleDate(it) }
+            if (row["purchaseDate"]?.isNotBlank() == true && purchaseDate == null) {
+                rejected.add(ImportIssue(index, "Invalid purchaseDate: '${row["purchaseDate"]}' (expected yyyy-MM-dd)"))
+                continue
+            }
+            val expiryDate = row["warrantyExpiryDate"]?.let { parseFlexibleDate(it) }
+            if (row["warrantyExpiryDate"]?.isNotBlank() == true && expiryDate == null) {
+                rejected.add(ImportIssue(index, "Invalid warrantyExpiryDate: '${row["warrantyExpiryDate"]}'"))
+                continue
+            }
+            if (purchaseDate != null && expiryDate != null && expiryDate < purchaseDate) {
+                rejected.add(ImportIssue(index, "Warranty expiry is before purchase date"))
+                continue
+            }
+            val months = row["warrantyPeriodMonths"]?.let { parseFlexibleInt(it) }
+            if (row["warrantyPeriodMonths"]?.isNotBlank() == true && months == null) {
+                rejected.add(ImportIssue(index, "Invalid warrantyPeriodMonths: '${row["warrantyPeriodMonths"]}'"))
+                continue
+            }
 
-        for ((index, element) in productsArray.withIndex()) {
-            try {
-                val productMap = element.jsonObject
-                val name = productMap["productName"]?.jsonPrimitive?.content
-                if (name == null) {
-                    failed++
-                    errors.add("productName required at index $index")
-                    continue
-                }
-                
-                val product = Product(
-                    userId = 1,
+            valid.add(
+                ParsedProduct(
                     productName = name,
-                    brand = productMap["brand"]?.jsonPrimitive?.content,
-                    model = productMap["model"]?.jsonPrimitive?.content,
-                    category = productMap["category"]?.jsonPrimitive?.content,
-                    serialNumber = productMap["serialNumber"]?.jsonPrimitive?.content,
-                    purchaseDate = productMap["purchaseDate"]?.jsonPrimitive?.content?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time },
-                    purchasePrice = productMap["purchasePrice"]?.jsonPrimitive?.content?.toDoubleOrNull(),
-                    currency = productMap["currency"]?.jsonPrimitive?.content ?: "USD",
-                    purchaseStore = productMap["purchaseStore"]?.jsonPrimitive?.content,
-                    warrantyExpiryDate = productMap["warrantyExpiryDate"]?.jsonPrimitive?.content?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time },
-                    warrantyPeriodMonths = productMap["warrantyPeriodMonths"]?.jsonPrimitive?.content?.toIntOrNull(),
-                    warrantyProvider = productMap["warrantyProvider"]?.jsonPrimitive?.content,
-                    warrantyProviderType = productMap["warrantyProviderType"]?.jsonPrimitive?.content,
-                    warrantyContact = productMap["warrantyContact"]?.jsonPrimitive?.content,
-                    warrantyWebsite = productMap["warrantyWebsite"]?.jsonPrimitive?.content,
-                    lifecycleStatus = productMap["lifecycleStatus"]?.jsonPrimitive?.content ?: "owned",
-                    tags = productMap["tags"]?.jsonPrimitive?.content ?: "[]",
-                    notes = productMap["notes"]?.jsonPrimitive?.content
+                    brand = row["brand"]?.ifBlank { null },
+                    model = row["model"]?.ifBlank { null },
+                    category = row["category"]?.ifBlank { null },
+                    serialNumber = serial,
+                    purchaseDate = purchaseDate,
+                    purchasePrice = price,
+                    currency = row["currency"]?.ifBlank { null } ?: "USD",
+                    purchaseStore = row["purchaseStore"]?.ifBlank { null },
+                    warrantyExpiryDate = expiryDate,
+                    warrantyPeriodMonths = months,
+                    warrantyProvider = row["warrantyProvider"]?.ifBlank { null },
+                    warrantyProviderType = row["warrantyProviderType"]?.ifBlank { null },
+                    warrantyContact = row["warrantyContact"]?.ifBlank { null },
+                    warrantyWebsite = row["warrantyWebsite"]?.ifBlank { null },
+                    lifecycleStatus = row["lifecycleStatus"]?.ifBlank { null } ?: "owned",
+                    tags = row["tags"]?.ifBlank { null } ?: "[]",
+                    notes = row["notes"]?.ifBlank { null }
                 )
-                
-                val productId = db.productDao().insert(product)
-                imported++
-                
-                // Import warranties
-                productMap["warranties"]?.jsonArray?.forEach { w ->
-                    val wObj = w.jsonObject
-                    db.warrantyPeriodDao().insert(com.warrantyvault.data.WarrantyPeriod(
-                        productId = productId,
-                        type = wObj["type"]?.jsonPrimitive?.content,
-                        provider = wObj["provider"]?.jsonPrimitive?.content,
-                        coverage = wObj["coverage"]?.jsonPrimitive?.content,
-                        startDate = wObj["startDate"]?.jsonPrimitive?.content?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time },
-                        expiryDate = wObj["expiryDate"]?.jsonPrimitive?.content?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time }
-                    ))
-                }
-                
-                // Import service history
-                productMap["serviceHistory"]?.jsonArray?.forEach { s ->
-                    val sObj = s.jsonObject
-                    val sDate = sObj["serviceDate"]?.jsonPrimitive?.content?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time } ?: System.currentTimeMillis()
-                    db.serviceHistoryDao().insert(com.warrantyvault.data.ServiceHistory(
-                        productId = productId,
-                        userId = 1,
-                        serviceDate = sDate,
-                        serviceType = sObj["serviceType"]?.jsonPrimitive?.content ?: "repair",
-                        serviceProvider = sObj["serviceProvider"]?.jsonPrimitive?.content,
-                        cost = sObj["cost"]?.jsonPrimitive?.content?.toDoubleOrNull(),
-                        currency = sObj["currency"]?.jsonPrimitive?.content ?: "USD",
-                        description = sObj["description"]?.jsonPrimitive?.content,
-                        nextServiceDate = sObj["nextServiceDate"]?.jsonPrimitive?.content?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time }
-                    ))
-                }
-            } catch (e: Exception) {
-                failed++
-                errors.add("Row $index: ${e.message}")
-            }
+            )
         }
 
-        ImportResult(imported, failed, errors)
+        ImportPreview(valid, rejected, inFileDupes)
     }
 
-    // Import from CSV
-    suspend fun importCsv(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
-        val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext ImportResult(0, 0, listOf("Failed to open file"))
-        val csvText = inputStream.reader().readText()
-        
-        val records = parseCsv(csvText)
-        if (records.isEmpty()) return@withContext ImportResult(0, 0, listOf("No data rows found"))
-
+    /**
+     * Commits a validated preview. Existing records are never modified or destroyed:
+     * rows whose serial matches an existing product are skipped and counted as duplicates.
+     */
+    suspend fun commitImport(preview: ImportPreview): ImportSummary = withContext(Dispatchers.IO) {
+        val userId = currentUserId()
         var imported = 0
-        var failed = 0
-        val errors = mutableListOf<String>()
+        var duplicatesSkipped = 0
+        val warnings = mutableListOf<String>()
+        var noDates = 0
 
-        for ((index, record) in records.withIndex()) {
-            try {
-                val productName = record["productName"]
-                if (productName.isNullOrEmpty()) {
-                    failed++
-                    errors.add("productName required at row $index")
+        for (p in preview.valid) {
+            if (p.serialNumber != null) {
+                val existing = db.productDao().getProductBySerialNumber(userId, p.serialNumber)
+                if (existing != null) {
+                    duplicatesSkipped++
                     continue
                 }
-                val product = Product(
-                    userId = 1,
-                    productName = productName,
-                    brand = record["brand"]?.ifBlank { null },
-                    model = record["model"]?.ifBlank { null },
-                    category = record["category"]?.ifBlank { null },
-                    serialNumber = record["serialNumber"]?.ifBlank { null },
-                    purchaseDate = record["purchaseDate"]?.ifBlank { null }?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time },
-                    purchasePrice = record["purchasePrice"]?.toDoubleOrNull(),
-                    currency = record["currency"]?.ifBlank { null } ?: "USD",
-                    purchaseStore = record["purchaseStore"]?.ifBlank { null },
-                    warrantyExpiryDate = record["warrantyExpiryDate"]?.ifBlank { null }?.let { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)?.time },
-                    lifecycleStatus = record["lifecycleStatus"]?.ifBlank { null } ?: "owned"
-                )
-                
-                db.productDao().insert(product)
-                imported++
-            } catch (e: Exception) {
-                failed++
-                errors.add("Row $index: ${e.message}")
             }
+            if (p.purchaseDate == null && p.warrantyExpiryDate == null) noDates++
+            db.productDao().insertProduct(
+                Product(
+                    userId = userId,
+                    productName = p.productName,
+                    brand = p.brand,
+                    model = p.model,
+                    category = p.category,
+                    serialNumber = p.serialNumber,
+                    purchaseDate = p.purchaseDate,
+                    purchasePrice = p.purchasePrice,
+                    currency = p.currency,
+                    purchaseStore = p.purchaseStore,
+                    warrantyExpiryDate = p.warrantyExpiryDate,
+                    warrantyPeriodMonths = p.warrantyPeriodMonths,
+                    warrantyProvider = p.warrantyProvider,
+                    warrantyProviderType = p.warrantyProviderType,
+                    warrantyContact = p.warrantyContact,
+                    warrantyWebsite = p.warrantyWebsite,
+                    lifecycleStatus = p.lifecycleStatus,
+                    tags = p.tags,
+                    notes = p.notes
+                )
+            )
+            imported++
         }
 
-        ImportResult(imported, failed, errors)
+        if (noDates > 0) warnings.add("$noDates record(s) have no purchase or warranty dates.")
+        ImportSummary(imported, preview.rejected.size, duplicatesSkipped, warnings)
     }
 
-    // RFC 4180 CSV parser
-    private fun parseCsv(text: String): List<Map<String, String>> {
-        val s = text.replace("\uFEFF", "") // Remove BOM
+    /** Convenience for callers that don't need the interactive preview step. */
+    suspend fun importJsonValidated(uri: Uri): ImportSummary {
+        val preview = buildPreview(uri)
+        return commitImport(preview)
+    }
+
+    private fun readText(uri: Uri): String? = try {
+        context.contentResolver.openInputStream(uri)?.use { it.reader(Charsets.UTF_8).readText() }
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun parseJsonRows(text: String): Result<List<Map<String, String?>>> = runCatching {
+        val parsed = json.decodeFromString<JsonElement>(text)
+        val productsArray: kotlinx.serialization.json.JsonArray = when {
+            parsed is kotlinx.serialization.json.JsonObject && parsed.containsKey("products") ->
+                parsed["products"]?.jsonArray ?: throw IllegalArgumentException("No products array found")
+            parsed is kotlinx.serialization.json.JsonArray -> parsed
+            else -> throw IllegalArgumentException("No products array found")
+        }
+        productsArray.map { el ->
+            val obj = el.jsonObject
+            obj.mapValues { (_, v) ->
+                runCatching { v.jsonPrimitive.content }.getOrNull()
+            }
+        }
+    }
+
+    private fun parseFlexibleDouble(raw: String): Double? =
+        raw.trim().replace(Regex("^[^0-9\\-]+"), "").replace(",", "").toDoubleOrNull()
+
+    private fun parseFlexibleInt(raw: String): Int? = raw.trim().toIntOrNull()
+
+    private fun parseFlexibleDate(raw: String): Long? {
+        val s = raw.trim()
+        if (s.isBlank()) return null
+        // ISO first (export format), then common alternatives.
+        runCatching { return DateUtils.toEpochMillis(LocalDate.parse(s)) }
+        for (fmt in listOf("yyyy-MM-dd", "dd/MM/yyyy", "MM/dd/yyyy", "dd-MM-yyyy", "dd.MM.yyyy")) {
+            runCatching {
+                val df = SimpleDateFormat(fmt, Locale.US).apply { isLenient = false }
+                val d = df.parse(s) ?: return@runCatching
+                return d.time
+            }
+        }
+        return null
+    }
+
+    // ---------------- Legacy CSV parser (kept for completeness) ----------------
+
+    fun parseCsv(text: String): List<Map<String, String>> {
+        val s = text.replace("\uFEFF", "")
         val rawRows = mutableListOf<List<String>>()
         var row = mutableListOf<String>()
         var field = StringBuilder()
@@ -349,7 +444,6 @@ class ExportImportService(private val context: Context, private val db: AppDatab
             i++
         }
 
-        // Final record
         row.add(field.toString())
         if (row.size > 1 || row.firstOrNull()?.isNotBlank() == true) rawRows.add(row.toList())
 
@@ -360,7 +454,6 @@ class ExportImportService(private val context: Context, private val db: AppDatab
             val map = mutableMapOf<String, String>()
             headers.forEachIndexed { idx, header ->
                 val value = if (idx < cells.size) cells[idx] else ""
-                // Remove formula injection guard
                 map[header] = if (value.startsWith("'")) value.substring(1) else value
             }
             map

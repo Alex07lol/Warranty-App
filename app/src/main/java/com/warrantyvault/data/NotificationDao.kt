@@ -27,6 +27,12 @@ interface NotificationDao {
     @Query("SELECT * FROM notifications WHERE userId = :userId AND productId = :productId AND createdAt >= :sinceTime ORDER BY createdAt DESC LIMIT 1")
     suspend fun getRecentNotificationForProduct(userId: Long, productId: Long, sinceTime: Long): Notification?
 
+    /** Dedupe: true when this product+type+stage already has a notification row. */
+    @Query(
+        "SELECT EXISTS(SELECT 1 FROM notifications WHERE userId = :userId AND productId = :productId AND notificationType = :typeWithStage)"
+    )
+    suspend fun existsForProductStage(userId: Long, productId: Long, typeWithStage: String): Boolean
+
     @Query("SELECT COUNT(*) FROM notifications WHERE userId = :userId AND isRead = 0")
     suspend fun getUnreadCount(userId: Long): Int
 

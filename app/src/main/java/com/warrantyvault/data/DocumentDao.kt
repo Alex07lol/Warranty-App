@@ -9,14 +9,14 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface DocumentDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(document: Document): Long
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(documents: List<Document>)
-
     @Update
-    suspend fun update(document: Document): Int
+    suspend fun updateDocument(document: Document): Int
+
+    @Query("SELECT * FROM documents WHERE id = :id")
+    suspend fun getDocumentByIdImmediate(id: Long): Document?
 
     @Query("SELECT * FROM documents WHERE id = :id")
     fun getDocumentById(id: Long): Flow<Document?>
