@@ -2,13 +2,22 @@ package com.warrantyvault.service
 
 import com.warrantyvault.data.Notification
 import com.warrantyvault.data.NotificationDao
+import com.warrantyvault.worker.WarrantyNotifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class NotificationService(private val dao: NotificationDao) {
+/**
+ * On-demand notification creation for callers outside the periodic worker.
+ * Shares the same product+stage dedupe key and notification IDs as ExpiryCheckWorker,
+ * so the two paths can never double-notify the same event.
+ */
+class NotificationService(
+    private val dao: NotificationDao,
+    private val userIdProvider: () -> Long
+) {
 
     private suspend fun createStaged(
         productId: Long,
@@ -17,11 +26,12 @@ class NotificationService(private val dao: NotificationDao) {
         title: String,
         message: String
     ) = withContext(Dispatchers.IO) {
+        val userId = userIdProvider()
         // Dedupe: never insert the same product+type+stage twice.
-        if (dao.existsForProductStage(1, productId, "warranty_expiry:$stage")) return@withContext
+        if (dao.existsForProductStage(userId, productId, "warranty_expiry:$stage")) return@withContext
         dao.insert(
             Notification(
-                userId = 1,
+                userId = userId,
                 notificationType = "warranty_expiry:$stage",
                 title = title,
                 message = message,

@@ -1,12 +1,13 @@
 package com.warrantyvault.ocr
 
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
  * Context-aware date parsing. Dates are returned together with the label that preceded them
  * so the parser can tell purchase dates from expiry dates instead of guessing by order.
+ * Genuinely ambiguous numeric dates (e.g. 03/04/2026 where both DD/MM and MM/DD are valid)
+ * are flagged so the review flow can surface a warning instead of silently picking one.
  */
 object DateParser {
 
@@ -16,7 +17,12 @@ object DateParser {
         val context: String?,
         val source: String,
         /** 0..1 heuristic confidence. */
-        val confidence: Float
+        val confidence: Float,
+        /**
+         * True when both day-first and month-first interpretations were plausible and we
+         * picked one (day-first). The review screen should ask the user to confirm.
+         */
+        val ambiguous: Boolean = false
     )
 
     private val PURCHASE_LABELS = listOf(
@@ -55,29 +61,52 @@ object DateParser {
         return null
     }
 
-    fun parseNumeric(token: String): LocalDate? {
-        val m = NUMERIC_DATE.matchEntire(token.trim()) ?: return parseNumericLoose(token)
+    /** Outcome of parsing a DD/MM-ordered numeric token. */
+    data class NumericParse(val date: LocalDate, val ambiguous: Boolean)
+
+    /**
+     * Parses "d/m/y" ordered tokens (the global norm). If both day-first and month-first
+     * readings are possible (e.g. 03/04/2026) the day-first reading is returned with
+     * [NumericParse.ambiguous] = true.
+     */
+    fun parseNumericDetailed(token: String): NumericParse? {
+        val m = NUMERIC_DATE.matchEntire(token.trim()) ?: return parseNumericLooseDetailed(token)
         val (y, mo, d, d2, mo2, y2) = m.destructured
         return if (y.isNotEmpty()) {
-            makeDate(y.toInt(), mo.toInt(), d.toInt())
+            // ISO order (2026-09-21): unambiguous by construction.
+            makeDate(y.toInt(), mo.toInt(), d.toInt())?.let { NumericParse(it, ambiguous = false) }
         } else {
             val first = d2.toInt(); val second = mo2.toInt(); var year = y2.toInt()
             if (year < 100) year += if (year <= 69) 2000 else 1900
-            // Day-first is the global norm; if that's impossible, fall back to month-first (US).
-            makeDate(year, second, first) ?: makeDate(year, first, second)
+            val dayFirst = makeDate(year, second, first)
+            val monthFirst = makeDate(year, first, second)
+            when {
+                dayFirst != null && monthFirst != null && first != second ->
+                    // Both plausible: prefer day-first (global norm), flag ambiguity.
+                    NumericParse(dayFirst, ambiguous = true)
+                dayFirst != null -> NumericParse(dayFirst, ambiguous = false)
+                monthFirst != null -> NumericParse(monthFirst, ambiguous = false)
+                else -> null
+            }
         }
     }
 
-    private fun parseNumericLoose(token: String): LocalDate? {
-        val cleaned = token.trim()
-        val parts = cleaned.split(Regex("[./-]"))
+    private fun parseNumericLooseDetailed(token: String): NumericParse? {
+        val parts = token.trim().split(Regex("[./-]"))
         if (parts.size != 3) return null
         return try {
             val a = parts[0].toInt(); val b = parts[1].toInt(); var c = parts[2].toInt()
             if (c < 100) c += if (c <= 69) 2000 else 1900
-            if (parts[0].length == 4) makeDate(a, b, c) else makeDate(c, b, a) ?: makeDate(c, a, b)
+            if (parts[0].length == 4) {
+                makeDate(a, b, c)?.let { NumericParse(it, ambiguous = false) }
+            } else {
+                parseNumericDetailed("$a/${b}/$c")
+            }
         } catch (e: NumberFormatException) { null }
     }
+
+    /** Back-compat: parses a numeric token or null. */
+    fun parseNumeric(token: String): LocalDate? = parseNumericDetailed(token)?.date
 
     fun parseTextual(line: String): LocalDate? {
         val m = TEXTUAL_DATE.find(line) ?: return null
@@ -105,31 +134,34 @@ object DateParser {
     fun findDates(line: String): List<LocalDate> {
         val out = mutableListOf<LocalDate>()
         NUMERIC_DATE.findAll(line).forEach { m ->
-            val tok = m.value
-            parseNumeric(tok)?.let { out.add(it) }
+            parseNumeric(m.value)?.let { out.add(it) }
         }
         parseTextual(line)?.let { out.add(it) }
         return out.distinct()
     }
 
     /**
-     * Scans lines for dates with their label context. Never infers by order: an unlabelled
-     * date is reported with context = null and the caller decides with the full picture.
+     * Scans lines for dates with their label context and ambiguity flags.
      */
     fun extractDatedLines(lines: List<String>): List<DateHit> {
         val hits = mutableListOf<DateHit>()
         for (line in lines) {
-            val dates = findDates(line)
-            if (dates.isEmpty()) continue
             val ctx = labelContext(line)
-            // Warranty/labelled dates are trustworthy; bare dates less so.
             val conf = when (ctx) {
                 "purchase", "expiry", "start" -> 0.9f
                 else -> 0.4f
             }
-            dates.forEach { hits.add(DateHit(it, ctx, line.trim(), conf)) }
+            // Numeric hits carry ambiguity info; textual dates are never ambiguous.
+            NUMERIC_DATE.findAll(line).forEach { m ->
+                parseNumericDetailed(m.value)?.let { np ->
+                    hits.add(DateHit(np.date, ctx, line.trim(), conf, np.ambiguous))
+                }
+            }
+            parseTextual(line)?.let { date ->
+                hits.add(DateHit(date, ctx, line.trim(), conf, ambiguous = false))
+            }
         }
-        return hits
+        return hits.distinctBy { Triple(it.date, it.context, it.source) }
     }
 
     fun purchaseLabelPresent(line: String): Boolean {

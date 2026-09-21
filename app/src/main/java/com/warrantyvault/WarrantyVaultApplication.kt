@@ -1,9 +1,7 @@
 package com.warrantyvault
 
 import android.app.Application
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.core.content.ContextCompat
+import androidx.work.Configuration
 import com.warrantyvault.data.AppDatabase
 import com.warrantyvault.data.User
 import com.warrantyvault.worker.ExpiryCheckWorker
@@ -11,25 +9,25 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class WarrantyVaultApplication : Application() {
+class WarrantyVaultApplication : Application(), Configuration.Provider {
+
     val database by lazy { AppDatabase.getDatabase(this) }
     var currentUserId: Long = 1L // Default guest/local user ID
 
+    /**
+     * On-demand WorkManager initialization (default initializer is disabled in the
+     * manifest). This guarantees WorkManager is usable the moment [ExpiryCheckWorker.schedule]
+     * runs in [onCreate], in any process environment, and trims app start time.
+     */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
+
     override fun onCreate() {
         super.onCreate()
-        // Verify & schedule the periodic warranty expiry check at app start.
+        // Schedule the periodic warranty expiry check at app start.
+        // (POST_NOTIFICATIONS is requested from MainActivity — an Application context
+        // cannot show the permission dialog.)
         ExpiryCheckWorker.schedule(this)
-
-        // POST_NOTIFICATIONS runtime permission (API 33+). The worker silently skips
-        // system notifications when this is denied; in-app alerts still work.
-        if (Build.VERSION.SDK_INT >= 33) {
-            val granted = ContextCompat.checkSelfPermission(
-                this, android.Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-            if (!granted) {
-                com.warrantyvault.notification.NotificationPermissionHelper.request(this)
-            }
-        }
 
         // Seed default demo user and products if empty
         CoroutineScope(Dispatchers.IO).launch {

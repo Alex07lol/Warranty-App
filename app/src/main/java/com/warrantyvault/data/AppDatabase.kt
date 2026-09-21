@@ -18,7 +18,7 @@ import androidx.room.TypeConverters
         Notification::class,
         RepairCenter::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -35,26 +35,42 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile private var INSTANCE: AppDatabase? = null
 
         /**
-         * v1 -> v2 (historical). The v1 schema is not shipped in this repo, so the safest
-         * non-destructive approximation is a no-op schema alignment; existing rows are kept.
+         * v1 -> v2 (historical).
+         *
+         * HONEST LIMITATION: this repository was initialized with the v2 schema (its first
+         * commit already contains the v2 entities), so no verified v1 schema exists to write
+         * a real migration against. This no-op is therefore only correct for installs whose
+         * v1 tables already matched the v2 entity definitions. It preserves all data either
+         * way; if a v1 install has a genuinely different schema Room will fail validation at
+         * open time rather than destroy data.
          */
         private val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // No schema change was shipped for v2 beyond what Room validates per entity;
-                // recreate nothing, destroy nothing.
+                // No verified v1 schema shipped in this repo; keep as data-preserving no-op.
+            }
+        }
+
+        /** v2 -> v3: no schema change (DAO-layer version marker only). */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) { /* schema unchanged */ }
+        }
+
+        /**
+         * v3 -> v4: adds `products.imei` so IMEIs get a dedicated domain field instead of
+         * being conflated with serialNumber. ALTER TABLE ADD COLUMN is safe and preserves
+         * every existing row; existing rows get NULL imei.
+         */
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE products ADD COLUMN imei TEXT DEFAULT NULL")
             }
         }
 
         /**
-         * v2 -> v3: no column changes. Bumped so the DAO layer (strict insert semantics,
-         * duplicate-serial lookup helpers) ships with a clean version marker. All data kept.
+         * All migrations in order, exposed for migration tests. The production builder
+         * below must stay in sync with this list.
          */
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                // Schema is unchanged; this migration exists to remove
-                // fallbackToDestructiveMigration() without risking user data.
-            }
-        }
+        val ALL_MIGRATIONS: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -63,7 +79,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "warrantyvault.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(*ALL_MIGRATIONS)
                     .build()
                 INSTANCE = instance
                 instance

@@ -72,6 +72,28 @@ object IdentifierParser {
         Regex("(?i)(airpods\\s*(pro|max)?)")
     )
 
+    /** Product line → manufacturing brand, so "Galaxy S24 Ultra" alone still yields Samsung. */
+    private val PRODUCT_LINE_BRAND = listOf(
+        Regex("(?i)galaxy") to "Samsung",
+        Regex("(?i)iphone|macbook|airpods|ipad") to "Apple",
+        Regex("(?i)thinkpad|ideapad|legion|yoga") to "Lenovo",
+        Regex("(?i)wh-?1000x|wf-?1000x|bravia|playstation") to "Sony",
+        Regex("(?i)surface|xbox") to "Microsoft",
+        Regex("(?i)pixel|nest") to "Google",
+        Regex("(?i)latitude|inspiron|xps|alienware") to "Dell",
+        Regex("(?i)pavilion|envy|elitebook|spectre|probook") to "HP",
+        Regex("(?i)rog|vivobook|zenbook") to "Asus",
+        Regex("(?i)predator|nitro|aspire|swift") to "Acer"
+    )
+
+    /** Infers the brand from a recognized product-line string ("Galaxy S24 Ultra" → Samsung). */
+    fun brandFromProductLine(productLine: String): String? {
+        for ((rx, brand) in PRODUCT_LINE_BRAND) {
+            if (rx.containsMatchIn(productLine)) return brand
+        }
+        return null
+    }
+
     fun extractModel(lines: List<String>): Pair<String, String>? {
         for (line in lines) {
             val m = MODEL_LABEL.find(line) ?: continue
@@ -183,7 +205,7 @@ object IdentifierParser {
         }
     }
 
-    fun extractBrand(lines: List<String>, merchant: String?): String? {
+    fun extractBrand(lines: List<String>, merchant: String?, productLine: String? = null): String? {
         for (line in lines) {
             val lower = line.lowercase(Locale.US)
             for (b in KNOWN_BRANDS) {
@@ -191,6 +213,11 @@ object IdentifierParser {
                     return b.replaceFirstChar { it.uppercase(Locale.US) }
                 }
             }
+        }
+        // No dictionary hit: infer from a recognized product line ("Galaxy S24" → Samsung).
+        if (productLine != null) {
+            val inferred = brandFromProductLine(productLine)
+            if (inferred != null) return inferred
         }
         return null
     }

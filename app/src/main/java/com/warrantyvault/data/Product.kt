@@ -37,6 +37,7 @@ data class Product(
     val currency: String = "USD",
     val purchaseStore: String? = null,
     val serialNumber: String? = null,
+    val imei: String? = null,
     val warrantyExpiryDate: Long? = null,
     val warrantyPeriodMonths: Int? = null,
     val warrantyProvider: String? = null,

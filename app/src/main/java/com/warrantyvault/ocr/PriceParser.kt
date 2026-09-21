@@ -5,7 +5,8 @@ import java.util.Locale
 /**
  * Parses money amounts from receipt text. Handles international formats (decimal comma vs
  * decimal point), currency symbols and codes, and thousands separators. Crucially, it never
- * mistakes long digit runs (IMEI, serial, invoice numbers) for money.
+ * mistakes long digit runs (IMEI, serial, invoice numbers), dates, phone numbers, or model
+ * numbers for money.
  */
 object PriceParser {
 
@@ -31,10 +32,19 @@ object PriceParser {
     )
 
     // Long numeric identifiers that must never be read as money: IMEI (15), EAN (8/13),
-    // invoice/order numbers, phone numbers. Also date-shaped tokens are filtered by caller.
+    // invoice/order numbers, phone numbers. "date" and "model" lines are filtered by
+    // isDateLine/isModelLine below.
     private val IDENTIFIER_LINE = Regex(
-        "(?i)\\b(imei\\d?|serial|s/n|s\\.n|invoice|order|tracking|product\\s*code|sku|phone|tel|model)\\b"
+        "(?i)\\b(imei\\d?|serial|s/n|s\\.n|invoice|order|tracking|product\\s*code|sku|phone|tel)\\b"
     )
+
+    /** Any line carrying a date label is never a price line. */
+    private val DATE_LINE = Regex(
+        "(?i)\\b(date|purchased|invoice\\s+date|warranty|valid|expires?|coverage|start(ed)?|bought)\\b"
+    )
+
+    /** Model/serial-looking alphanumeric tokens on a line disqualify it as a price line. */
+    private val MODEL_LINE = Regex("(?i)\\b(model|m/n|part|p/n)\\b")
 
     /** A money-shaped token: optional symbol/code, digits with separators, optional decimals. */
     private val MONEY_TOKEN = Regex(
@@ -47,9 +57,17 @@ object PriceParser {
         "(?i)\\b(USD|EUR|GBP|INR|AUD|CAD|JPY|CHF|SEK|NOK|DKK|PLN|ZAR|AED|SGD)\\b"
     )
 
-    data class PriceMatch(val amount: Double, val currency: String?, val label: String?, val source: String)
+    data class PriceMatch(
+        val amount: Double,
+        val currency: String?,
+        val label: String?,
+        val source: String
+    )
 
-    /** Heavier labels first — they outrank a bare "price". */
+    /**
+     * Label ranking, best first. A "Grand Total" always beats a bare "Total"; the position
+     * in this list is the confidence tier.
+     */
     private val LABEL_PRIORITY = listOf(
         "grand total", "net total", "order total", "total amount", "amount paid",
         "total paid", "final amount", "total due", "paid", "total",
@@ -64,13 +82,16 @@ object PriceParser {
     private fun looksLikeIdentifier(line: String): Boolean =
         IDENTIFIER_LINE.containsMatchIn(line)
 
+    private fun looksLikeDateLine(line: String): Boolean = DATE_LINE.containsMatchIn(line)
+
+    private fun looksLikeModelLine(line: String): Boolean = MODEL_LINE.containsMatchIn(line)
+
+    /** A date-shaped token like 21/09/2026, 2026-09-21, 21.09.26. */
     private fun isDateShaped(token: String): Boolean =
         Regex("^\\d{1,4}[./-]\\d{1,2}[./-]\\d{1,4}$").matches(token)
 
     private fun phoneShaped(line: String, token: String): Boolean {
-        // A token surrounded by phone-ish context: "Tel: 1800 123 456" or 10+ digits with dashes
         if (Regex("(?i)\\b(phone|tel|mob|call)\\b").containsMatchIn(line)) return true
-        val digitsOnly = token.filter { it.isDigit() }
         return Regex("\\d{3}[- ]\\d{3}[- ]\\d{4}").matches(token.replace(" ", ""))
     }
 
@@ -106,19 +127,33 @@ object PriceParser {
     fun decimalsFor(currencyCode: String?): Int = CURRENCY_DECIMALS[currencyCode?.uppercase(Locale.US)] ?: 2
 
     /**
-     * Extracts the best price from receipt lines. Prefers labelled totals, then the largest
-     * plausible amount. Never scans identifier lines (IMEI / serial / invoice) for money.
+     * Extracts the best price from receipt lines using a strict ranking:
+     * 1. Label tier (Grand Total beats Total beats Price) among labelled candidates.
+     * 2. Currency-carrying candidates over bare numbers.
+     * 3. Largest plausible amount as the last tiebreaker.
+     *
+     * Date lines, identifier lines, and model lines are skipped entirely, so
+     * "Purchase Date: 21/09/2026" can never yield 21, 09, or 2026 as money.
      */
     fun extractPrice(lines: List<String>): PriceMatch? {
         val candidates = mutableListOf<PriceMatch>()
 
         for ((index, line) in lines.withIndex()) {
             if (looksLikeIdentifier(line)) continue
+            if (looksLikeDateLine(line)) continue
+            if (looksLikeModelLine(line)) continue
             val label = lineLabel(line)
             // Look on this line and, for labels, also the next line ("Total\n₹129,999").
-            val scopes = if (label != null && index + 1 < lines.size) listOf(line, lines[index + 1]) else listOf(line)
+            // The next line must not itself be a date/identifier line.
+            val next = if (label != null && index + 1 < lines.size) lines[index + 1] else null
+            val scopes = buildList {
+                add(line)
+                if (next != null && !looksLikeIdentifier(next) && !looksLikeDateLine(next) && !looksLikeModelLine(next)) {
+                    add(next)
+                }
+            }
             for (scope in scopes) {
-                if (isDateShaped(scope.trim()) ) continue
+                if (isDateShaped(scope.trim())) continue
                 for (m in MONEY_TOKEN.findAll(scope)) {
                     val symbol = m.groupValues[1].trim()
                     val token = m.groupValues[2]
@@ -143,7 +178,7 @@ object PriceParser {
 
         if (candidates.isEmpty()) return null
 
-        // 1) Best label wins.
+        // 1) Best label tier wins.
         val labelled = candidates.filter { it.label != null }
         if (labelled.isNotEmpty()) {
             val bestLabel = LABEL_PRIORITY.firstOrNull { l -> labelled.any { it.label == l } }
@@ -151,8 +186,10 @@ object PriceParser {
             return pool.maxByOrNull { it.amount }
         }
 
-        // 2) Unlabelled: pick the largest plausible amount.
-        return candidates.maxByOrNull { it.amount }
+        // 2) Unlabelled: currency-carrying candidate first, then largest amount.
+        return candidates.sortedWith(
+            compareByDescending<PriceMatch> { it.currency != null }.thenByDescending { it.amount }
+        ).first()
     }
 
     private fun resolveCurrency(symbol: String, line: String): String? {

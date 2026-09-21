@@ -9,6 +9,17 @@ android {
     namespace = "com.warrantyvault"
     compileSdk = 34
 
+    // Room's MigrationTestHelper loads exported schemas from the test assets.
+    sourceSets {
+        getByName("test").assets.srcDir("$projectDir/schemas")
+    }
+    testOptions {
+        unitTests {
+            // Required for Robolectric to see the merged test assets (Room schemas).
+            isIncludeAndroidResources = true
+        }
+    }
+
     defaultConfig {
         applicationId = "com.warrantyvault"
         minSdk = 24
@@ -134,6 +145,10 @@ dependencies {
     
         // Testing
     testImplementation("junit:junit:4.13.2")
+    // MigrationTestHelper + Robolectric let migration tests run on the JVM.
+    testImplementation("androidx.room:room-testing:2.6.1")
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    testImplementation("androidx.test:core:1.5.0")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     debugImplementation("androidx.compose.ui:ui-tooling")

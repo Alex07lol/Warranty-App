@@ -25,6 +25,9 @@ import com.warrantyvault.data.Product
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -44,8 +47,16 @@ object WarrantyNotifier {
         manager.createNotificationChannel(channel)
     }
 
+    /**
+     * Deterministic system-notification ID per product+stage so 30-day/7-day/1-day/expired
+     * alerts never overwrite each other, while repeated runs stay stable.
+     */
+    fun notificationId(productId: Long, stage: String): Int {
+        return (31 * productId.hashCode() + stage.hashCode()) and 0x7FFFFFFF
+    }
+
     /** Posts a system notification if POST_NOTIFICATIONS is granted (API 33+). */
-    fun post(context: Context, id: Long, title: String, message: String) {
+    fun post(context: Context, productId: Long, stage: String, title: String, message: String) {
         if (android.os.Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
@@ -53,7 +64,7 @@ object WarrantyNotifier {
         }
         val intent = Intent(context, MainActivity::class.java)
         val pending = PendingIntent.getActivity(
-            context, id.toInt(), intent,
+            context, notificationId(productId, stage), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
@@ -65,7 +76,7 @@ object WarrantyNotifier {
             .build()
         try {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.notify(id.toInt(), notification)
+            manager.notify(notificationId(productId, stage), notification)
         } catch (e: Exception) {
             Log.e("WarrantyNotifier", "Failed to post notification", e)
         }
@@ -96,7 +107,7 @@ class ExpiryCheckWorker(
     }
 
     companion object {
-        /** One-time schedule helper used by the Application and the boot receiver. */
+        /** Periodic schedule helper used by the Application and the boot receiver. */
         fun schedule(context: Context) {
             val request = PeriodicWorkRequestBuilder<ExpiryCheckWorker>(12, TimeUnit.HOURS)
                 .build()
@@ -109,29 +120,34 @@ class ExpiryCheckWorker(
     }
 
     private suspend fun checkExpiringProducts() {
-        val now = System.currentTimeMillis()
-        val day = 86_400_000L
+        val today = LocalDate.now()
+        val in30 = today.plusDays(30)
         val context = applicationContext
 
         WarrantyNotifier.ensureChannel(context)
 
-        val expiringSoon = db.productDao().getExpiringSoonProducts(now, now + 30 * day)
+        val expiringSoon = db.productDao().getExpiringSoonProducts(
+            DateUtils.startOfDayMillis(today),
+            DateUtils.endOfDayMillis(in30)
+        )
         for (product in expiringSoon) {
-            val daysLeft = daysUntil(product.warrantyExpiryDate!!, now)
+            val expiryDate = toLocalDate(product.warrantyExpiryDate!!)
+            val daysLeft = java.time.temporal.ChronoUnit.DAYS.between(today, expiryDate)
             val stage = when {
-                daysLeft <= 1 -> "1_day"
-                daysLeft <= 7 -> "7_days"
+                daysLeft <= 1L -> "1_day"
+                daysLeft <= 7L -> "7_days"
                 else -> "30_days"
             }
             maybeNotify(
                 product = product,
                 stage = stage,
                 title = "Warranty expiring soon",
-                message = "${product.productName} warranty expires on ${formatDate(product.warrantyExpiryDate)} ($daysLeft day${if (daysLeft == 1L) "" else "s"} left)."
+                message = "${product.productName} warranty expires on ${formatDate(product.warrantyExpiryDate)} " +
+                    "($daysLeft day${if (daysLeft == 1L) "" else "s"} left)."
             )
         }
 
-        val expired = db.productDao().getExpiredProducts(now)
+        val expired = db.productDao().getExpiredProducts(DateUtils.endOfDayMillis(today.minusDays(1)))
         for (product in expired) {
             maybeNotify(
                 product = product,
@@ -143,8 +159,8 @@ class ExpiryCheckWorker(
     }
 
     /**
-     * Dedupe key: userId + productId + notificationType + stage. A new row is created only
-     * when this stage hasn't fired yet, so WorkManager reruns never spam the user.
+     * Dedupe key: userId + productId + notificationType (type:stage). A new row is created
+     * only when this stage hasn't fired yet, so WorkManager reruns never spam the user.
      */
     private suspend fun maybeNotify(product: Product, stage: String, title: String, message: String) {
         val dao = db.notificationDao()
@@ -163,14 +179,13 @@ class ExpiryCheckWorker(
                 createdAt = System.currentTimeMillis()
             )
         )
-        WarrantyNotifier.post(applicationContext, product.id, title, message)
-        Log.i("ExpiryCheckWorker", "Notification [$stage] for ${product.productName}")
+        WarrantyNotifier.post(applicationContext, product.id, stage, title, message)
+        // No product names in logs (OCR text can end up in product names; avoid PII in logcat).
+        Log.i(TAG, "Created notification stage=$stage for product id=${product.id}")
     }
 
-    private fun daysUntil(expiry: Long, now: Long): Long {
-        val diff = expiry - now
-        return Math.max(0, (diff + 86_399_999L) / 86_400_000L)
-    }
+    private fun toLocalDate(epochMillis: Long): LocalDate =
+        Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
 
     private fun formatDate(timestamp: Long?): String {
         return if (timestamp != null) {
@@ -179,6 +194,14 @@ class ExpiryCheckWorker(
             "Unknown date"
         }
     }
+}
+
+private object DateUtils {
+    fun startOfDayMillis(date: LocalDate): Long =
+        date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+    fun endOfDayMillis(date: LocalDate): Long =
+        date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() - 1
 }
 
 // Factory for creating the worker

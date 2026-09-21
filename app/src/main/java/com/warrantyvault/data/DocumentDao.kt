@@ -15,6 +15,12 @@ interface DocumentDao {
     @Update
     suspend fun updateDocument(document: Document): Int
 
+    /** Direct link without a read round-trip; usable inside a Room transaction. */
+    @Query(
+        "UPDATE documents SET productId = :productId, docState = :docState, verified = :verified, updatedAt = :updatedAt WHERE id = :id"
+    )
+    suspend fun linkDocument(id: Long, productId: Long, docState: String, verified: Boolean, updatedAt: Long): Int
+
     @Query("SELECT * FROM documents WHERE id = :id")
     suspend fun getDocumentByIdImmediate(id: Long): Document?
 

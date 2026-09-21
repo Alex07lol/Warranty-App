@@ -60,6 +60,7 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                     "model" to product.model,
                     "category" to product.category,
                     "serialNumber" to product.serialNumber,
+                    "imei" to product.imei,
                     "purchaseDate" to product.purchaseDate?.let { epochToDate(it) },
                     "purchasePrice" to product.purchasePrice,
                     "currency" to product.currency,
@@ -189,6 +190,7 @@ class ExportImportService(private val context: Context, private val db: AppDatab
         val model: String? = null,
         val category: String? = null,
         val serialNumber: String? = null,
+        val imei: String? = null,
         val purchaseDate: Long? = null,
         val purchasePrice: Double? = null,
         val currency: String = "USD",
@@ -236,6 +238,7 @@ class ExportImportService(private val context: Context, private val db: AppDatab
         val valid = mutableListOf<ParsedProduct>()
         val rejected = mutableListOf<ImportIssue>()
         val seenSerials = mutableSetOf<String>()
+        val seenImeis = mutableSetOf<String>()
         var inFileDupes = 0
 
         for ((index, row) in rows.withIndex()) {
@@ -252,6 +255,19 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                 inFileDupes++
                 rejected.add(ImportIssue(index, "Duplicate serial in file: $serial"))
                 continue
+            }
+            val imei = row["imei"]?.trim()?.ifBlank { null }
+            if (imei != null) {
+                val digits = imei.filter { it.isDigit() }
+                if (digits.length !in 14..16) {
+                    rejected.add(ImportIssue(index, "Invalid IMEI: '$imei' (expected 14-16 digits)"))
+                    continue
+                }
+                if (!seenImeis.add(digits)) {
+                    inFileDupes++
+                    rejected.add(ImportIssue(index, "Duplicate IMEI in file: $imei"))
+                    continue
+                }
             }
             val price = row["purchasePrice"]?.let { parseFlexibleDouble(it) }
             if (row["purchasePrice"] != null && row["purchasePrice"]!!.isNotBlank() && price == null) {
@@ -285,6 +301,7 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                     model = row["model"]?.ifBlank { null },
                     category = row["category"]?.ifBlank { null },
                     serialNumber = serial,
+                    imei = imei,
                     purchaseDate = purchaseDate,
                     purchasePrice = price,
                     currency = row["currency"]?.ifBlank { null } ?: "USD",
@@ -324,6 +341,13 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                     continue
                 }
             }
+            if (p.imei != null) {
+                val existingByImei = db.productDao().getProductByImei(userId, p.imei)
+                if (existingByImei != null) {
+                    duplicatesSkipped++
+                    continue
+                }
+            }
             if (p.purchaseDate == null && p.warrantyExpiryDate == null) noDates++
             db.productDao().insertProduct(
                 Product(
@@ -333,6 +357,7 @@ class ExportImportService(private val context: Context, private val db: AppDatab
                     model = p.model,
                     category = p.category,
                     serialNumber = p.serialNumber,
+                    imei = p.imei,
                     purchaseDate = p.purchaseDate,
                     purchasePrice = p.purchasePrice,
                     currency = p.currency,

@@ -36,6 +36,10 @@ interface NotificationDao {
     @Query("SELECT COUNT(*) FROM notifications WHERE userId = :userId AND isRead = 0")
     suspend fun getUnreadCount(userId: Long): Int
 
+    /** Reactive unread count for badges. */
+    @Query("SELECT COUNT(*) FROM notifications WHERE userId = :userId AND isRead = 0")
+    fun getUnreadCountFlow(userId: Long): kotlinx.coroutines.flow.Flow<Int>
+
     @Query("UPDATE notifications SET isRead = 1 WHERE userId = :userId")
     suspend fun markAllAsRead(userId: Long): Int
 

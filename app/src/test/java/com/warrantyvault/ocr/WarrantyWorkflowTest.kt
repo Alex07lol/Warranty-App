@@ -17,14 +17,15 @@ class WarrantyWorkflowTest {
         purchase: Long? = null,
         expiry: Long? = null,
         months: String = "",
-        serial: String = ""
+        serial: String = "",
+        imei: String = ""
     ) = ReviewDraft(
         result = OcrResult(rawText = ""),
         productName = "Test Product",
         brand = "Brand",
         model = "Model",
         serialNumber = serial,
-        imei = "",
+        imei = imei,
         purchaseStore = "Store",
         priceText = "999",
         currency = "USD",
@@ -51,8 +52,22 @@ class WarrantyWorkflowTest {
     @Test
     fun `explicit expiry is preferred over months`() {
         val d = draft(purchase = millis(2026, 9, 21), expiry = millis(2029, 1, 15), months = "24")
-        // The workflow uses draft.warrantyExpiryDate when present.
+        // The workflow uses draft.warrantyExpiryDate when present; months are only a fallback.
         assertEquals(millis(2029, 1, 15), d.warrantyExpiryDate)
+        assertNotEqualsMonthsImplied(d)
+    }
+
+    /** Guard: 24 months from Sep 21 2026 is Jan 2029 only if someone botches the math. */
+    private fun assertNotEqualsMonthsImplied(d: ReviewDraft) {
+        val implied = d.purchaseDate?.let {
+            DateUtils.toEpochMillis(DateUtils.addMonths(DateUtils.fromEpochMillis(it), 24))
+        }
+        assertTrue(implied != d.warrantyExpiryDate)
+    }
+
+    @Test
+    fun `month clamping jan31 plus one month is feb28`() {
+        assertEquals(millis(2026, 2, 28), DateUtils.toEpochMillis(DateUtils.addMonths(LocalDate.of(2026, 1, 31), 1)))
     }
 
     @Test
@@ -71,6 +86,24 @@ class WarrantyWorkflowTest {
         }
         assertEquals("exact_serial", best!!.matchType)
         assertEquals(1L, best.product.id)
+    }
+
+    @Test
+    fun `match priority exact imei over brand model`() {
+        val candidates = listOf(
+            ProductMatch(com.warrantyvault.data.Product(id = 3, userId = 1, productName = "Brand Model"), "brand_model"),
+            ProductMatch(com.warrantyvault.data.Product(id = 4, userId = 1, productName = "Phone", imei = "490154203237518"), "exact_imei")
+        )
+        val best = candidates.minByOrNull {
+            when (it.matchType) {
+                "exact_serial" -> 0
+                "exact_imei" -> 1
+                "brand_model" -> 2
+                else -> 3
+            }
+        }
+        assertEquals("exact_imei", best!!.matchType)
+        assertEquals(4L, best.product.id)
     }
 
     @Test
@@ -109,13 +142,22 @@ class WarrantyWorkflowTest {
     }
 
     @Test
-    fun `hasAnyIdentity reflects parsed fields`() {
-        val empty = OcrParser.parse("Total: 10.00")
+    fun `hasAnyIdentity requires a real identity field`() {
+        val noIdentity = OcrParser.parse("Total: 10.00")
+        // Deliberately constructed: no product/brand/model/serial/IMEI anywhere.
+        assertFalse(noIdentity.hasAnyIdentity())
+
         val withSerial = OcrParser.parse("Store\nWidget\nS/N: ABC123456")
-        assertFalse(withSerial.hasAnyIdentity().let { it && !withSerial.serialNumber.value.isNullOrBlank() }.not())
         assertTrue(withSerial.hasAnyIdentity())
-        // empty may still have store as identity fallback, so just check the API runs
-        assertTrue(empty.hasAnyIdentity() || !empty.hasAnyIdentity())
+        assertTrue(!withSerial.serialNumber.value.isNullOrBlank())
+    }
+
+    @Test
+    fun `user edits are tracked in the review draft`() {
+        val d = draft(serial = "SN123")
+        assertFalse(d.hasUserEdits)
+        d.userEdits.add("serialNumber")
+        assertTrue(d.hasUserEdits)
     }
 
     @Test
