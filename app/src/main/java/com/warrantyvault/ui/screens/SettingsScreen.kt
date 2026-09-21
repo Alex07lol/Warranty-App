@@ -1,5 +1,8 @@
 package com.warrantyvault.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -13,16 +16,39 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.widget.Toast
+import com.warrantyvault.WarrantyVaultApplication
+import com.warrantyvault.service.ExportImportService
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen() {
+    val context = LocalContext.current
+    val app = context.applicationContext as WarrantyVaultApplication
+    val exportImportService = remember { ExportImportService(context, app.database) }
+    val scope = rememberCoroutineScope()
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val result = exportImportService.importJson(uri)
+                val message = if (result.errors.isEmpty()) {
+                    "Imported ${result.imported} items"
+                } else {
+                    "Import completed with ${result.failed} failures: ${result.errors.joinToString(", ")}"
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Settings & Privacy", fontWeight = FontWeight.Bold) })
+            TopAppBar(title = { Text("Settings \u0026 Privacy", fontWeight = FontWeight.Bold) })
         }
     ) { padding ->
         Column(
@@ -32,6 +58,7 @@ fun SettingsScreen() {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Architecture Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -65,6 +92,7 @@ fun SettingsScreen() {
                 }
             }
 
+            // Privacy Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -88,13 +116,14 @@ fun SettingsScreen() {
                         Text("Data Privacy", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     }
                     Text(
-                        text = "Your warranty data never leaves your device. No analytics, no telemetry, no third-party access. Export your data anytime via JSON/CSV.",
+                        text = "Your warranty data never leaves your device. No analytics, no telemetry, no third‑party access. Export your data anytime via JSON/CSV.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
+            // About Card
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -134,10 +163,15 @@ fun SettingsScreen() {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Data Management", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Divider()
-
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
-                            onClick = { /* TODO: Implement export */ },
+                            onClick = {
+                                scope.launch {
+                                    exportImportService.exportJson()
+                                    exportImportService.exportCsv()
+                                    Toast.makeText(context, "Data exported (JSON & CSV) to Downloads", Toast.LENGTH_LONG).show()
+                                }
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -145,23 +179,19 @@ fun SettingsScreen() {
                                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer
                             )
                         ) {
-                            Row(horizontalArrangement = Arrangement.Center) {
+                            Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Download, contentDescription = null)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text("Export All Data (JSON + CSV)")
                             }
                         }
-
                         OutlinedButton(
-                            onClick = { /* TODO: Implement import */ },
+                            onClick = { importLauncher.launch("*/*") },
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(12.dp),
-                            border = androidx.compose.foundation.BorderStroke(
-                                width = 1.dp,
-                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                            )
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                         ) {
-                            Row(horizontalArrangement = Arrangement.Center) {
+                            Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.Upload, contentDescription = null)
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text("Import Data")
