@@ -1,36 +1,46 @@
 package com.warrantyvault.ui.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.warrantyvault.WarrantyEngine
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Product
-import com.warrantyvault.ui.theme.*
-import com.warrantyvault.ui.theme.CanvasDark
-import com.warrantyvault.ui.theme.statusColor
-import com.warrantyvault.ui.theme.statusSoftColor
-import com.warrantyvault.ui.components.*
+import com.warrantyvault.data.ServiceHistory
+import com.warrantyvault.ui.components.StatusBadge
+import com.warrantyvault.ui.theme.WvDimens
+import com.warrantyvault.ui.theme.darkWvColors
+import com.warrantyvault.ui.theme.lightWvColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+private val detailDateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+
 @Composable
 fun ProductDetailScreen(
     productId: Long,
@@ -39,146 +49,206 @@ fun ProductDetailScreen(
 ) {
     val context = LocalContext.current
     val app = context.applicationContext as WarrantyVaultApplication
-    val database = app.database
-    val productDao = database.productDao()
+    val productDao = app.database.productDao()
     val scope = rememberCoroutineScope()
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
 
     var product by remember { mutableStateOf<Product?>(null) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
+    // Collect product updates on a background dispatcher via the DAO flow.
     LaunchedEffect(productId) {
         withContext(Dispatchers.IO) {
-            productDao.getProductById(productId).collect { p ->
-                product = p
-            }
+            productDao.getProductById(productId).collect { p -> product = p }
         }
     }
 
-    val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+    Scaffold { padding ->
+        product?.let { p ->
+            val info = WarrantyEngine.warrantyStatusOf(p.purchaseDate, p.warrantyExpiryDate)
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(product?.productName ?: "Product Details") },
-                navigationIcon = {
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .background(wv.background)
+            ) {
+                // Header: back, title, edit, delete
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = WvDimens.Space2, vertical = WvDimens.Space2),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = wv.textPrimary)
                     }
-                },
-                actions = {
-                    if (product != null) {
-                        IconButton(onClick = { onEditClick(product!!.id) }) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
-                        }
-                        IconButton(onClick = {
-                            scope.launch(Dispatchers.IO) {
-                                productDao.softDelete(product!!.id, System.currentTimeMillis())
-                                withContext(Dispatchers.Main) {
-                                    onBackClick()
-                                }
-                            }
-                        }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
-                        }
+                    Text(
+                        p.productName,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = wv.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { onEditClick(p.id) }) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit product", tint = wv.textSecondary)
+                    }
+                    IconButton(onClick = { showDeleteConfirm = true }) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete product", tint = wv.error)
                     }
                 }
-            )
-        }
-    ) { padding ->
-        if (product == null) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else {
-            val p = product!!
-            val info = WarrantyEngine.warrantyStatusOf(p.purchaseDate, p.warrantyExpiryDate)
-            val isDark = MaterialTheme.colorScheme.background == CanvasDark
 
-            WarrantyBackground(modifier = Modifier.padding(padding)) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                val tabs = listOf("Overview", "Documents", "Repairs")
+                var selectedTab by remember(p.id) { mutableIntStateOf(0) }
+
+                // Tab row
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = androidx.compose.ui.graphics.Color.Transparent,
+                    contentColor = wv.primary,
+                    divider = {}
                 ) {
-                    item {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(text = p.productName, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurface)
-                                    WarrantyStatusBadge(status = info.status, label = info.label)
-                                }
-
-                                val brandModel = listOfNotNull(p.brand, p.model).joinToString(" · ")
-                                if (brandModel.isNotEmpty()) {
-                                    Text(text = brandModel, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
+                    tabs.forEachIndexed { i, title ->
+                        Tab(
+                            selected = selectedTab == i,
+                            onClick = { selectedTab = i },
+                            text = {
+                                Text(
+                                    title,
+                                    fontWeight = if (selectedTab == i) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (selectedTab == i) wv.primary else wv.textSecondary
+                                )
                             }
-                        }
+                        )
                     }
+                }
 
-                    item {
-                        WarrantySectionHeader(title = "Warranty Status")
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                DetailRow("Status", info.label, statusColor(info.status, isDark))
-                                DetailRow("Days Remaining", info.daysRemaining?.toString() ?: "Unknown")
-                                DetailRow("Warranty Period", p.warrantyPeriodMonths?.let { "$it months" })
-                                DetailRow("Warranty Expiry", p.warrantyExpiryDate?.let { dateFormat.format(Date(it)) })
-                                DetailRow("Warranty Provider", p.warrantyProvider)
-                                DetailRow("Warranty Type", p.warrantyProviderType)
-                                DetailRow("Support Contact", p.warrantyContact)
-                                DetailRow("Website", p.warrantyWebsite)
-                            }
-                        }
-                    }
+                // Content
+                when (selectedTab) {
+                    0 -> OverviewTab(p, info)
+                    1 -> DocumentsTab(p.id)
+                    2 -> RepairsTab(p.id)
+                }
+            }
 
-                    item {
-                        WarrantySectionHeader(title = "Purchase Information")
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                DetailRow("Purchase Date", p.purchaseDate?.let { dateFormat.format(Date(it)) })
-                                DetailRow("Purchase Price", p.purchasePrice?.let { "${p.currency} $it" })
-                                DetailRow("Store", p.purchaseStore)
+            if (showDeleteConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showDeleteConfirm = false },
+                    title = { Text("Delete product?") },
+                    text = { Text("This removes \"${p.productName}\" and its service history. Documents are kept as unlinked files.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showDeleteConfirm = false
+                            scope.launch(Dispatchers.IO) {
+                                productDao.softDelete(p.id, System.currentTimeMillis())
+                                withContext(Dispatchers.Main) { onBackClick() }
                             }
-                        }
-                    }
+                        }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    },
+                    dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } }
+                )
+            }
+        } ?: run {
+            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = wv.primary)
+            }
+        }
+    }
+}
 
-                    item {
-                        WarrantySectionHeader(title = "Product Identifiers")
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                DetailRow("Category", p.category)
-                                DetailRow("Serial Number", p.serialNumber)
-                                DetailRow("Lifecycle Status", p.lifecycleStatus.replaceFirstChar { it.uppercase() })
-                            }
-                        }
-                    }
+@Composable
+private fun OverviewTab(p: Product, info: com.warrantyvault.WarrantyInfo) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val (statusColor, _) = wv.statusColors(info.status)
 
-                    item {
-                        WarrantySectionHeader(title = "Notes")
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                DetailRow("Notes", p.notes)
-                            }
-                        }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(WvDimens.ScreenGutter),
+        verticalArrangement = Arrangement.spacedBy(WvDimens.Space4)
+    ) {
+        // ---- Hero card ----
+        item {
+            Surface(
+                shape = RoundedCornerShape(WvDimens.RadiusLarge),
+                color = MaterialTheme.colorScheme.surface,
+                border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle)
+            ) {
+                Column(Modifier.padding(WvDimens.Space5), verticalArrangement = Arrangement.spacedBy(WvDimens.Space2)) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            p.productName,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = wv.textPrimary,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        StatusBadge(status = info.status, label = info.label)
                     }
+                    listOfNotNull(p.brand, p.model).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = wv.textSecondary)
+                    }
+                    // Days remaining + progress
+                    info.daysRemaining?.let { days ->
+                        val total = p.warrantyPeriodMonths?.let { m -> m * 30.44 }?.toInt()
+                        val progress = if (total != null && total > 0) {
+                            (total - days).coerceIn(0, total) / total.toFloat()
+                        } else null
+                        Spacer(Modifier.height(WvDimens.Space1))
+                        LinearProgressIndicator(
+                            progress = { (1f - (progress ?: 0f)).coerceIn(0f, 1f) },
+                            color = statusColor,
+                            trackColor = wv.surfaceHighest,
+                            modifier = Modifier.fillMaxWidth().height(6.dp)
+                        )
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        KeyValue("Purchase date", p.purchaseDate?.let { detailDateFormat.format(Date(it)) } ?: "—")
+                        KeyValue("Expiry", p.warrantyExpiryDate?.let { detailDateFormat.format(Date(it)) } ?: "—")
+                    }
+                }
+            }
+        }
+
+        // ---- Warranty information ----
+        item {
+            InfoCard("Warranty Information") {
+                KeyValue("Status", info.label, valueColor = statusColor)
+                KeyValue("Days Remaining", info.daysRemaining?.toString() ?: "Unknown")
+                KeyValue("Warranty Period", p.warrantyPeriodMonths?.let { "$it months" })
+                KeyValue("Warranty Expiry", p.warrantyExpiryDate?.let { detailDateFormat.format(Date(it)) })
+                KeyValue("Warranty Provider", p.warrantyProvider)
+                KeyValue("Support Contact", p.warrantyContact)
+            }
+        }
+
+        // ---- Purchase information ----
+        item {
+            InfoCard("Purchase Information") {
+                KeyValue("Purchase Date", p.purchaseDate?.let { detailDateFormat.format(Date(it)) })
+                KeyValue("Purchase Price", p.purchasePrice?.let { "${p.currency} ${it}" })
+                KeyValue("Store", p.purchaseStore)
+            }
+        }
+
+        // ---- Product identifiers ----
+        item {
+            InfoCard("Product Identifiers") {
+                IdentifierRow("Serial Number", p.serialNumber)
+                IdentifierRow("IMEI", p.imei, sensitive = true)
+                IdentifierRow("Model", p.model)
+                IdentifierRow("Category", p.category)
+            }
+        }
+
+        if (!p.notes.isNullOrBlank()) {
+            item {
+                InfoCard("Notes") {
+                    Text(p.notes, style = MaterialTheme.typography.bodyMedium, color = wv.textSecondary)
                 }
             }
         }
@@ -186,19 +256,202 @@ fun ProductDetailScreen(
 }
 
 @Composable
-fun DetailRow(label: String, value: String?, statusColor: Color? = null) {
-    if (!value.isNullOrBlank()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-            Text(
-                text = value,
-                fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
-                color = statusColor ?: MaterialTheme.colorScheme.onSurface
+private fun DocumentsTab(productId: Long) {
+    val app = LocalContext.current.applicationContext as WarrantyVaultApplication
+    val documents by app.database.documentDao().getDocumentsByProductId(productId)
+        .collectAsState(initial = emptyList())
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+
+    if (documents.isEmpty()) {
+        Column(Modifier.padding(WvDimens.ScreenGutter)) {
+            EmptyStateCard(
+                title = "No documents yet",
+                body = "Invoices, receipts and warranty cards you scan for this product will appear here.",
+                actionText = "Scan Document"
             )
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(WvDimens.ScreenGutter),
+            verticalArrangement = Arrangement.spacedBy(WvDimens.Space3)
+        ) {
+            items(documents.size) { i ->
+                val d = documents[i]
+                DocumentRow(
+                    fileName = d.fileName,
+                    addedAt = d.uploadedAt,
+                    verified = d.verified
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepairsTab(productId: Long) {
+    val app = LocalContext.current.applicationContext as WarrantyVaultApplication
+    val repairs by app.database.serviceHistoryDao().getServiceHistoryByProductId(productId)
+        .collectAsState(initial = emptyList())
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+
+    if (repairs.isEmpty()) {
+        Column(Modifier.padding(WvDimens.ScreenGutter)) {
+            EmptyStateCard(
+                title = "No repair history yet",
+                body = "Service events for this product — screen replacements, battery swaps, diagnostics — will appear here."
+            )
+        }
+    } else {
+        LazyColumn(
+            contentPadding = PaddingValues(WvDimens.ScreenGutter),
+            verticalArrangement = Arrangement.spacedBy(WvDimens.Space3)
+        ) {
+            items(repairs.size) { i ->
+                RepairEventRow(repairs[i])
+            }
+        }
+    }
+}
+
+@Composable
+private fun DocumentRow(fileName: String, addedAt: Long, verified: Boolean) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    Surface(
+        shape = RoundedCornerShape(WvDimens.RadiusMedium),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(Modifier.padding(WvDimens.Space3), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(WvDimens.RadiusSmall),
+                color = wv.primarySoft,
+                modifier = Modifier.size(38.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Description, contentDescription = null, tint = wv.primary, modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(Modifier.width(WvDimens.Space3))
+            Column(Modifier.weight(1f)) {
+                Text(fileName, style = MaterialTheme.typography.titleSmall, color = wv.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "Added ${detailDateFormat.format(Date(addedAt))}" + if (verified) " · ✓ reviewed" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = wv.textMuted
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RepairEventRow(event: ServiceHistory) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    Surface(
+        shape = RoundedCornerShape(WvDimens.RadiusMedium),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(WvDimens.Space3), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(
+                    event.serviceType.replaceFirstChar { it.uppercase() },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = wv.textPrimary
+                )
+                Text(
+                    detailDateFormat.format(Date(event.serviceDate)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = wv.textMuted
+                )
+            }
+            event.description?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = wv.textSecondary)
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                event.serviceProvider?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = wv.textMuted)
+                }
+                event.cost?.let {
+                    Text(
+                        "${event.currency} ${it}",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = wv.textPrimary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    Surface(
+        shape = RoundedCornerShape(WvDimens.RadiusMedium),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(WvDimens.Space4), verticalArrangement = Arrangement.spacedBy(WvDimens.Space3)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = wv.textPrimary)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun KeyValue(label: String, value: String?, valueColor: androidx.compose.ui.graphics.Color? = null) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    if (value.isNullOrBlank()) return
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = wv.textMuted)
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = valueColor ?: wv.textPrimary,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End
+        )
+    }
+}
+
+/** Identifier row with copy; sensitive values are masked until the reveal is pressed. */
+@Composable
+private fun IdentifierRow(label: String, value: String?, sensitive: Boolean = false) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val clipboard = LocalClipboardManager.current
+    var revealed by remember(label) { mutableStateOf(!sensitive) }
+    if (value.isNullOrBlank()) return
+
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, color = wv.textMuted)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (revealed) value else value.map { "•" }.joinToString(""),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                color = wv.textPrimary
+            )
+            IconButton(onClick = {
+                clipboard.setText(AnnotatedString(value))
+            }, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Default.ContentCopy, contentDescription = "Copy $label", tint = wv.textMuted, modifier = Modifier.size(15.dp))
+            }
+            if (sensitive) {
+                IconButton(onClick = { revealed = !revealed }, modifier = Modifier.size(32.dp)) {
+                    Icon(
+                        if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = if (revealed) "Hide $label" else "Show $label",
+                        tint = wv.textMuted,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+            }
         }
     }
 }

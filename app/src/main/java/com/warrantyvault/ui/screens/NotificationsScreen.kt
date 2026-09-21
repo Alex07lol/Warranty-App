@@ -2,9 +2,10 @@ package com.warrantyvault.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Notifications
@@ -12,19 +13,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Notification
-import com.warrantyvault.ui.theme.*
-import com.warrantyvault.ui.components.*
+import com.warrantyvault.ui.theme.WvDimens
+import com.warrantyvault.ui.theme.darkWvColors
+import com.warrantyvault.ui.theme.lightWvColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationsScreen(
     onProductClick: (Long) -> Unit
@@ -33,106 +35,118 @@ fun NotificationsScreen(
     val app = context.applicationContext as WarrantyVaultApplication
     val notificationDao = app.database.notificationDao()
     val notifications by notificationDao.getAllNotifications(app.currentUserId).collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
 
-    val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
+    val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
 
-    Scaffold(
-        topBar = {
-            TopAppBar(title = { Text("Notifications & Alerts", fontWeight = FontWeight.Bold) })
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(wv.background)
+            .padding(horizontal = WvDimens.ScreenGutter)
+    ) {
+        Spacer(Modifier.height(WvDimens.Space4))
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Alerts", style = MaterialTheme.typography.headlineMedium, color = wv.textPrimary)
+            if (notifications.any { !it.isRead }) {
+                TextButton(onClick = {
+                    scope.launch(Dispatchers.IO) { notificationDao.markAllAsRead(app.currentUserId) }
+                }) { Text("Mark all read", color = wv.primary) }
+            }
         }
-    ) { padding ->
-        WarrantyBackground(modifier = Modifier.padding(padding)) {
+        Spacer(Modifier.height(WvDimens.Space4))
+
+        if (notifications.isEmpty()) {
+            EmptyStateCard(
+                title = "No notifications yet",
+                body = "Warranty expiry reminders and product updates will appear here."
+            )
+        } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(WvDimens.Space3),
+                contentPadding = PaddingValues(bottom = WvDimens.Space6)
             ) {
-                if (notifications.isEmpty()) {
-                    item {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Icon(Icons.Default.Notifications, contentDescription = null, modifier = Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
-                                Text("No notifications yet", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Text("Warranty expiry and service reminders will appear here.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
+                items(notifications.size) { i ->
+                    val n = notifications[i]
+                    NotificationItem(
+                        notification = n,
+                        dateFormat = dateFormat,
+                        onClick = {
+                            n.productId?.let(onProductClick)
                         }
-                    }
-                } else {
-                    items(notifications) { notification ->
-                        NotificationItem(
-                            notification = notification,
-                            onClick = { /* TODO: navigate to product */ }
-                        )
-                    }
+                    )
                 }
             }
         }
     }
 }
 
+/**
+ * Neutral surface card. Unread: small dot + stronger title + slightly elevated surface.
+ * Type accent (amber expiring / red expired / blue info / green success) is a small dot
+ * only — never a border or giant coloured card.
+ */
 @Composable
 fun NotificationItem(
     notification: Notification,
+    dateFormat: SimpleDateFormat,
     onClick: () -> Unit
 ) {
-    val dateFormat = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault())
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
     val isUnread = !notification.isRead
 
-    Card(
+    val accent = when {
+        notification.notificationType.contains("expired") -> wv.error
+        notification.notificationType.contains("30_days") -> wv.warning
+        notification.notificationType.contains("7_days") -> wv.warning
+        notification.notificationType.contains("1_day") -> wv.warning
+        notification.notificationType.contains("update") || notification.notificationType.contains("success") -> wv.success
+        else -> wv.info
+    }
+
+    Surface(
+        shape = RoundedCornerShape(WvDimens.RadiusMedium),
+        color = if (isUnread) wv.surfaceElevated else MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, if (isUnread) wv.border else wv.borderSubtle),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 4.dp),
-        shape = RoundedCornerShape(RadiusLG),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isUnread) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f) else MaterialTheme.colorScheme.surface
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (isUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-        )
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = notification.title,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = dateFormat.format(Date(notification.createdAt)),
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Text(
-                text = notification.message,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+        Row(Modifier.padding(WvDimens.Space3), verticalAlignment = Alignment.Top) {
+            // Accent dot (semantic, small)
+            Box(
+                Modifier
+                    .padding(top = 6.dp)
+                    .size(8.dp)
+                    .background(accent, CircleShape)
             )
-            if (isUnread) {
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
+            Spacer(Modifier.width(WvDimens.Space3))
+            Column(Modifier.weight(1f)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(
-                        text = "Unread",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 0.5.sp,
-                        color = MaterialTheme.colorScheme.primary
+                        text = notification.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Medium,
+                        color = wv.textPrimary,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Text(
+                        text = dateFormat.format(Date(notification.createdAt)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = wv.textMuted
                     )
                 }
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = notification.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = wv.textSecondary
+                )
             }
         }
     }

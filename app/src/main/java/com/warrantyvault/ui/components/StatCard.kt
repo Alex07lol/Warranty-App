@@ -1,143 +1,102 @@
 package com.warrantyvault.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.warrantyvault.ui.theme.*
+import com.warrantyvault.ui.theme.WvDimens
+import com.warrantyvault.ui.theme.darkWvColors
+import com.warrantyvault.ui.theme.lightWvColors
 
+/**
+ * Neutral stat card with a semantic accent dot + tinted icon. Never a giant colored card.
+ */
 @Composable
 fun WarrantyStatCard(
     label: String,
     value: String,
     subtitle: String,
-    icon: @Composable (() -> Unit),
-    iconBgColor: Color,
-    iconTintColor: Color,
+    icon: ImageVector,
     modifier: Modifier = Modifier,
-    accent: Boolean = false
+    accent: Color? = null,
+    onClick: (() -> Unit)? = null
 ) {
-    val isDark = MaterialTheme.colorScheme.background == CanvasDark
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val accentColor = accent ?: wv.textSecondary
+    val container = MaterialTheme.colorScheme.surface
 
-    Card(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .wrapContentHeight(),
-        shape = RoundedCornerShape(RadiusLG),
-        colors = CardDefaults.cardColors(
-            containerColor = if (accent) BrandPrimary else MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (accent) 6.dp else 2.dp
-        )
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        shape = RoundedCornerShape(WvDimens.RadiusMedium),
+        color = container,
+        border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(WvDimens.Space3),
+            verticalArrangement = Arrangement.spacedBy(WvDimens.Space1)
         ) {
-            // Icon wrapper
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(
-                        if (accent) Color.White.copy(alpha = 0.18f) else iconBgColor,
-                        shape = RoundedCornerShape(RadiusSM)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                icon()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .background(accentColor.copy(alpha = 0.14f), RoundedCornerShape(WvDimens.RadiusSmall)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(15.dp))
+                }
+                Spacer(Modifier.width(6.dp))
+                // Semantic dot — colour is not the only indicator.
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(accentColor, androidx.compose.foundation.shape.CircleShape)
+                )
             }
-
-            // Value
             Text(
                 text = value,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
-                letterSpacing = (-1).sp,
-                color = if (accent) Color.White else MaterialTheme.colorScheme.onSurface
+                color = wv.textPrimary
             )
-
-            // Label
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Medium,
-                color = if (accent) Color.White.copy(alpha = 0.82f) else MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // Subtitle
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (accent) Color.White.copy(alpha = 0.68f) else MaterialTheme.colorScheme.onSurfaceVariant
+                style = MaterialTheme.typography.labelMedium,
+                color = wv.textSecondary,
+                maxLines = 1
             )
         }
     }
 }
 
-// Predefined stat cards for Dashboard
 @Composable
-fun ActiveWarrantiesStat(value: String, modifier: Modifier = Modifier) {
-    WarrantyStatCard(
-        label = "Active Warranties",
-        value = value,
-        subtitle = "Coverage is active",
-        icon = { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(20.dp)) },
-        iconBgColor = OkSoft,
-        iconTintColor = Ok,
-        modifier = modifier
-    )
+fun ActiveWarrantiesStat(value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    WarrantyStatCard("Active", value, "", Icons.Default.CheckCircle, modifier, wv.success, onClick)
 }
 
 @Composable
-fun ExpiringSoonStat(value: String, modifier: Modifier = Modifier) {
-    WarrantyStatCard(
-        label = "Expiring Soon",
-        value = value,
-        subtitle = "Action required soon",
-        icon = { Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(20.dp)) },
-        iconBgColor = WarnSoft,
-        iconTintColor = Warn,
-        modifier = modifier,
-        accent = true
-    )
+fun ExpiringSoonStat(value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    WarrantyStatCard("Expiring Soon", value, "", Icons.Default.Warning, modifier, wv.warning, onClick)
 }
 
 @Composable
-fun ExpiredWarrantiesStat(value: String, modifier: Modifier = Modifier) {
-    WarrantyStatCard(
-        label = "Expired Warranties",
-        value = value,
-        subtitle = "Coverage ended",
-        icon = { Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(20.dp)) },
-        iconBgColor = DangerSoft,
-        iconTintColor = Danger,
-        modifier = modifier
-    )
-}
-
-@Composable
-fun DocumentsStat(value: String, modifier: Modifier = Modifier) {
-    WarrantyStatCard(
-        label = "Total Documents",
-        value = value,
-        subtitle = "Receipts & files",
-        icon = { Icon(Icons.Default.Description, contentDescription = null, modifier = Modifier.size(20.dp)) },
-        iconBgColor = OkSoft,
-        iconTintColor = BrandPrimary,
-        modifier = modifier
-    )
+fun ExpiredWarrantiesStat(value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    WarrantyStatCard("Expired", value, "", Icons.Default.Close, modifier, wv.error, onClick)
 }

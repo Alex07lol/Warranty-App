@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WarrantyVault — UI Preview</title>
+<style>
+  /* ===== Exact tokens from ui/theme/Theme.kt ===== */
+  :root, [data-theme="dark"] {
+    --bg:#090D12; --surface:#101720; --surface-el:#151F2A; --surface-hi:#1B2633;
+    --primary:#5B7CFF; --primary-press:#4869E8; --on-primary:#0A0F1A;
+    --text1:#F3F6FA; --text2:#A8B3C2; --text3:#778496;
+    --border:#263341; --border-sub:#1A242F;
+    --success:#4CC9A0; --warning:#F0B35A; --error:#F06B78; --info:#79A7FF;
+    --glass:rgba(18,25,34,0.78); --glass-border:rgba(255,255,255,0.08);
+    --primary-soft:rgba(91,124,255,0.14); --success-soft:rgba(76,201,160,0.14);
+    --warning-soft:rgba(240,179,90,0.14); --error-soft:rgba(240,107,120,0.13);
+    --info-soft:rgba(121,167,255,0.13);
+    --shadow:0 8px 32px rgba(0,0,0,.45);
+  }
+  [data-theme="light"] {
+    --bg:#F4F5F7; --surface:#FFFFFF; --surface-el:#FBFBFD; --surface-hi:#F1F2F6;
+    --primary:#4A63D8; --primary-press:#3B52C2; --on-primary:#FFFFFF;
+    --text1:#1A1F28; --text2:#525B6B; --text3:#7A8494;
+    --border:#E1E4EA; --border-sub:#EDEFF3;
+    --success:#2E8F6E; --warning:#B57A1E; --error:#C4484F; --info:#3E72C9;
+    --glass:rgba(255,255,255,0.82); --glass-border:rgba(26,31,40,0.08);
+    --primary-soft:rgba(74,99,216,0.10); --success-soft:rgba(46,143,110,0.11);
+    --warning-soft:rgba(181,122,30,0.12); --error-soft:rgba(196,72,79,0.10);
+    --info-soft:rgba(62,114,201,0.10);
+    --shadow:0 8px 32px rgba(20,30,50,.12);
+  }
+  /* Geometry: radii 12/16/22/28, spacing 4-32 */
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body {
+    font-family:-apple-system,BlinkMacSystemFont,'Inter','Segoe UI',Roboto,sans-serif;
+    background:#0B0F16; display:flex; align-items:center; justify-content:center;
+    padding:24px; gap:28px; color:var(--text1);
+  }
+  [data-theme="dark"] body { background:#0B0F16; }
+  [data-theme="light"] body { background:#DDE1E8; }
+
+  /* ===== Control panel ===== */
+  .controls {
+    width:230px; display:flex; flex-direction:column; gap:14px;
+  }
+  .controls h1 { font-size:15px; font-weight:700; color:var(--text1); letter-spacing:-.2px; }
+  .controls .sub { font-size:11.5px; color:var(--text3); line-height:1.5; }
+  .ctrl-card {
+    background:var(--surface); border:1px solid var(--border-sub); border-radius:16px; padding:14px;
+  }
+  .ctrl-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.8px; color:var(--text3); margin-bottom:8px; }
+  .seg { display:flex; gap:6px; }
+  .seg button {
+    flex:1; padding:7px 0; border-radius:10px; border:1px solid var(--border-sub); background:transparent;
+    color:var(--text2); font-size:11.5px; font-weight:600; cursor:pointer; transition:all .18s ease;
+  }
+  .seg button.on { background:var(--primary-soft); color:var(--primary); border-color:transparent; }
+  .screen-list { display:flex; flex-direction:column; gap:2px; }
+  .screen-list button {
+    text-align:left; padding:8px 10px; border-radius:10px; border:none; background:transparent;
+    color:var(--text2); font-size:12.5px; font-weight:600; cursor:pointer; transition:all .15s;
+  }
+  .screen-list button:hover { background:var(--surface-hi); }
+  .screen-list button.on { background:var(--primary-soft); color:var(--primary); }
+  .note { font-size:10.5px; color:var(--text3); line-height:1.55; }
+
+  /* ===== Phone frame ===== */
+  .phone {
+    width:412px; height:860px; max-height:calc(100vh - 48px); background:var(--bg);
+    border-radius:38px; overflow:hidden; position:relative; box-shadow:var(--shadow);
+    border:1px solid rgba(255,255,255,.09); flex-shrink:0; transition:width .25s ease;
+  }
+  .statusbar {
+    height:34px; display:flex; align-items:center; justify-content:space-between;
+    padding:0 22px; font-size:11.5px; font-weight:600; color:var(--text1); flex-shrink:0;
+  }
+  .screens { position:absolute; inset:34px 0 0 0; overflow:hidden; }
+  .screen {
+    position:absolute; inset:0; overflow-y:auto; padding:16px 16px 110px;
+    opacity:0; transform:translateY(10px); pointer-events:none;
+    transition:opacity .2s ease, transform .22s ease; scrollbar-width:none;
+  }
+  .screen::-webkit-scrollbar { display:none; }
+  .screen.active { opacity:1; transform:none; pointer-events:auto; }
+
+  /* ===== Glass bottom nav ===== */
+  .glassnav {
+    position:absolute; left:18px; right:18px; bottom:10px; height:62px;
+    background:var(--glass); border:1px solid var(--glass-border); border-radius:28px;
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    display:flex; padding:6px; box-shadow:0 10px 30px rgba(0,0,0,.35); z-index:50;
+  }
+  .glassnav .tab {
+    flex:1; border:none; background:transparent; border-radius:999px; cursor:pointer;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    color:var(--text2); font-size:10.5px; font-weight:500; font-family:inherit;
+    transition:background .18s ease, color .18s ease; position:relative;
+  }
+  .glassnav .tab.on { background:var(--primary-soft); color:var(--primary); font-weight:600; }
+  .glassnav .tab svg { width:21px; height:21px; transition:transform .18s ease; }
+  .glassnav .tab.on svg { transform:scale(1.06); }
+  .glassnav .badge {
+    position:absolute; top:7px; right:calc(50% - 19px); min-width:15px; height:15px;
+    background:var(--error); color:#fff; border-radius:999px; font-size:8.5px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; padding:0 3px;
+  }
+
+  /* ===== Common UI ===== */
+  .h-title { font-size:25px; font-weight:700; letter-spacing:-.4px; color:var(--text1); }
+  .h-sub { font-size:12.5px; color:var(--text2); margin-top:2px; }
+  .card {
+    background:var(--surface); border:1px solid var(--border-sub); border-radius:16px;
+    padding:14px; transition:transform .15s ease;
+  }
+  .card.hero {
+    background:linear-gradient(135deg,var(--surface-el),var(--surface-hi));
+    border-radius:22px; padding:20px;
+  }
+  .section-h { display:flex; align-items:center; justify-content:space-between; margin:22px 0 10px; }
+  .section-h .t { font-size:17px; font-weight:600; color:var(--text1); }
+  .section-h .see { color:var(--primary); font-size:12.5px; font-weight:600; background:none; border:none; cursor:pointer; font-family:inherit; }
+  .iconbtn {
+    width:42px; height:42px; border-radius:999px; background:var(--surface);
+    border:1px solid var(--border-sub); display:flex; align-items:center; justify-content:center;
+    color:var(--text2); cursor:pointer; position:relative; flex-shrink:0;
+  }
+  .iconbtn svg { width:19px; height:19px; }
+  .iconbtn .bdot {
+    position:absolute; top:-2px; right:-2px; min-width:16px; height:16px; background:var(--error);
+    color:#fff; border-radius:999px; font-size:9px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  }
+  .avatar {
+    width:42px; height:42px; border-radius:999px; background:var(--primary-soft);
+    color:var(--primary); font-weight:700; font-size:15px; display:flex; align-items:center; justify-content:center;
+  }
+  .btn-primary {
+    width:100%; height:48px; border-radius:12px; background:var(--primary); color:var(--on-primary);
+    font-weight:600; font-size:14px; border:none; cursor:pointer; display:flex; align-items:center;
+    justify-content:center; gap:8px; font-family:inherit; transition:background .15s, transform .1s;
+  }
+  .btn-primary:active { background:var(--primary-press); transform:scale(.985); }
+  .btn-ghost {
+    flex:1; height:44px; border-radius:12px; background:transparent; color:var(--text1);
+    border:1px solid var(--border); font-weight:600; font-size:13px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; gap:7px; font-family:inherit;
+  }
+  .btn-sm {
+    padding:8px 14px; border-radius:10px; background:var(--primary); color:var(--on-primary);
+    font-weight:600; font-size:12px; border:none; cursor:pointer; font-family:inherit;
+  }
+  .stat-row { display:flex; gap:12px; }
+  .stat {
+    flex:1; background:var(--surface); border:1px solid var(--border-sub); border-radius:16px; padding:12px;
+  }
+  .stat .top { display:flex; align-items:center; gap:6px; }
+  .stat .ic { width:26px; height:26px; border-radius:10px; display:flex; align-items:center; justify-content:center; }
+  .stat .ic svg { width:14px; height:14px; }
+  .stat .dot { width:6px; height:6px; border-radius:999px; }
+  .stat .v { font-size:21px; font-weight:700; margin-top:8px; color:var(--text1); letter-spacing:-.4px; }
+  .stat .l { font-size:11px; color:var(--text2); font-weight:500; margin-top:1px; }
+  .pill {
+    display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px;
+    font-size:10.5px; font-weight:600;
+  }
+  .pill .d { width:6px; height:6px; border-radius:999px; }
+  .pcard {
+    background:var(--surface); border:1px solid var(--border-sub); border-radius:16px; padding:12px;
+    display:flex; align-items:center; gap:12px; margin-bottom:10px; cursor:pointer; transition:transform .12s;
+  }
+  .pcard:active { transform:scale(.985); }
+  .thumb {
+    width:52px; height:52px; border-radius:12px; background:var(--surface-hi);
+    display:flex; align-items:center; justify-content:center; color:var(--text3); flex-shrink:0;
+  }
+  .pcard .info { flex:1; min-width:0; }
+  .pcard .n { font-size:15px; font-weight:600; color:var(--text1); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pcard .bm { font-size:12px; color:var(--text2); margin-top:1px; }
+  .pcard .ex { font-size:10.5px; color:var(--text3); margin-top:2px; }
+  .pcard .right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .chev { color:var(--text3); font-size:18px; line-height:1; }
+  .search {
+    width:100%; height:46px; border-radius:12px; border:1px solid var(--border); background:transparent;
+    color:var(--text1); padding:0 14px 0 40px; font-size:13.5px; font-family:inherit; outline:none;
+  }
+  .search:focus { border-color:var(--primary); }
+  .search-wrap { position:relative; margin-bottom:14px; }
+  .search-wrap svg { position:absolute; left:13px; top:14px; width:17px; height:17px; color:var(--text3); }
+  .kv { display:flex; justify-content:space-between; padding:5px 0; font-size:13.5px; }
+  .kv .k { color:var(--text3); }
+  .kv .v { font-weight:500; color:var(--text1); }
+  .icard {
+    background:var(--surface); border:1px solid var(--border-sub); border-radius:16px;
+    padding:16px; margin-bottom:14px;
+  }
+  .icard .t { font-size:15.5px; font-weight:600; color:var(--text1); margin-bottom:8px; }
+  .prog { height:6px; border-radius:999px; background:var(--surface-hi); overflow:hidden; margin:10px 0; }
+  .prog i { display:block; height:100%; border-radius:999px; }
+  .tabs { display:flex; border-bottom:1px solid var(--border-sub); margin-bottom:16px; }
+  .tabs button {
+    flex:1; padding:11px 0; background:none; border:none; font-family:inherit; font-size:13.5px;
+    font-weight:500; color:var(--text2); cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tabs button.on { color:var(--primary); font-weight:600; border-bottom-color:var(--primary); }
+  .empty {
+    background:var(--surface); border:1px solid var(--border-sub); border-radius:16px;
+    padding:26px 20px; text-align:center;
+  }
+  .empty .t { font-size:15px; font-weight:600; color:var(--text1); }
+  .empty .b { font-size:12.5px; color:var(--text2); margin-top:6px; line-height:1.5; }
+  .warnbox {
+    background:var(--warning-soft); border-radius:16px; padding:14px; margin-bottom:14px;
+  }
+  .warnbox .t { color:var(--warning); font-weight:700; font-size:13.5px; margin-bottom:6px; }
+  .warnbox .w { font-size:12px; color:var(--text2); line-height:1.6; }
+  .field { margin-bottom:12px; }
+  .field label { display:block; font-size:11px; color:var(--text3); font-weight:600; margin-bottom:5px; }
+  .field input, .field select {
+    width:100%; height:44px; border-radius:12px; border:1px solid var(--border); background:transparent;
+    color:var(--text1); padding:0 13px; font-size:13.5px; font-family:inherit; outline:none;
+  }
+  .field input:focus { border-color:var(--primary); }
+  .field .err { color:var(--error); font-size:11px; margin-top:4px; font-weight:600; display:none; }
+  .field.bad input { border-color:var(--error); }
+  .field.bad .err { display:block; }
+  .alert-card {
+    background:var(--surface); border:1px solid var(--border-sub); border-radius:16px; padding:12px;
+    display:flex; gap:12px; margin-bottom:10px; cursor:pointer;
+  }
+  .alert-card.unread { background:var(--surface-el); border-color:var(--border); }
+  .alert-card .dot { width:8px; height:8px; border-radius:999px; margin-top:6px; flex-shrink:0; }
+  .alert-card .t { font-size:13.5px; color:var(--text1); }
+  .alert-card.unread .t { font-weight:600; }
+  .alert-card:not(.unread) .t { font-weight:500; color:var(--text1); }
+  .alert-card .m { font-size:12px; color:var(--text2); margin-top:2px; line-height:1.45; }
+  .alert-card .d { font-size:10.5px; color:var(--text3); white-space:nowrap; margin-left:8px; }
+  .srow {
+    display:flex; align-items:center; gap:12px; padding:12px 16px;
+  }
+  .srow + .srow { border-top:1px solid var(--border-sub); }
+  .srow .ic { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .srow .ic svg { width:17px; height:17px; }
+  .srow .tx { flex:1; }
+  .srow .tt { font-size:13.5px; font-weight:600; color:var(--text1); }
+  .srow .ss { font-size:11.5px; color:var(--text2); margin-top:1px; }
+  .modal-bg {
+    position:absolute; inset:0; background:rgba(4,8,14,.6); z-index:80; display:none;
+    align-items:flex-end; backdrop-filter:blur(3px);
+  }
+  .modal-bg.show { display:flex; }
+  .modal {
+    background:var(--surface-el); border-radius:24px 24px 0 0; width:100%; padding:22px 20px 30px;
+    animation:up .25s ease;
+  }
+  @keyframes up { from { transform:translateY(40px); opacity:0; } to { transform:none; opacity:1; } }
+  .modal .mt { font-size:17px; font-weight:700; color:var(--text1); }
+  .modal .ms { font-size:12.5px; color:var(--text2); margin-top:3px; line-height:1.5; }
+  .modal .row { display:flex; justify-content:space-between; padding:7px 0; font-size:13px; }
+  .modal .row .k { color:var(--text3); }
+  .modal .row .v { color:var(--text1); font-weight:500; }
+  .modal .acts { display:flex; gap:10px; margin-top:16px; }
+  .processing { text-align:center; padding:70px 30px; }
+  .spinner {
+    width:46px; height:46px; margin:0 auto 18px; border-radius:999px;
+    border:3.5px solid var(--surface-hi); border-top-color:var(--primary); animation:spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .review-ok { color:var(--success); font-size:11px; font-weight:600; }
+  .osm { font-size:10px; color:var(--text3); margin:8px 0; }
+  .fade-in { animation:fi .3s ease; }
+  @keyframes fi { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none; } }
+  svg { fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+</style>
+</head>
+<body data-theme="dark">
+
+<div class="controls">
+  <div>
+    <h1>WarrantyVault UI</h1>
+    <div class="sub">Interactive preview of the redesigned Compose UI. Exact theme tokens from <b>Theme.kt</b>.</div>
+  </div>
+  <div class="ctrl-card">
+    <div class="ctrl-label">Theme</div>
+    <div class="seg">
+      <button id="th-dark" class="on" onclick="setTheme('dark')">Dark</button>
+      <button id="th-light" onclick="setTheme('light')">Light</button>
+    </div>
+  </div>
+  <div class="ctrl-card">
+    <div class="ctrl-label">Device width</div>
+    <div class="seg">
+      <button onclick="setWidth(this,360)">360</button>
+      <button onclick="setWidth(this,392)">392</button>
+      <button class="on" onclick="setWidth(this,412)">412</button>
+    </div>
+  </div>
+  <div class="ctrl-card">
+    <div class="ctrl-label">Jump to screen</div>
+    <div class="screen-list">
+      <button class="on" onclick="go('dashboard',this)">Dashboard</button>
+      <button onclick="go('products',this)">Products</button>
+      <button onclick="go('detail',this)">Product Detail</button>
+      <button onclick="go('scan',this)">Scan / OCR Review</button>
+      <button onclick="go('repairs',this)">Repair Locations</button>
+      <button onclick="go('alerts',this)">Alerts</button>
+      <button onclick="go('settings',this)">Settings</button>
+    </div>
+  </div>
+  <div class="note">Try: scan flow → Take Photo → review → Confirm (match dialog). IMEI mask/reveal on Product Detail. Dark/light + widths live-test responsiveness.</div>
+</div>
+
+<div class="phone" id="phone">
+  <div class="statusbar"><span>21:47</span><span>▲ ●▍ ▮</span></div>
+  <div class="screens">
+
+    <!-- ============ DASHBOARD ============ -->
+    <div class="screen active" id="s-dashboard">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <div class="h-title">WarrantyVault</div>
+          <div class="h-sub">Your devices. Your peace of mind.</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <div class="iconbtn" onclick="go('alerts')">
+            <svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>
+            <span class="bdot">3</span>
+          </div>
+          <div class="avatar">A</div>
+        </div>
+      </div>
+
+      <div class="card hero" style="margin-top:18px;display:flex;align-items:center;gap:14px">
+        <div style="flex:1">
+          <div style="font-size:17px;font-weight:700;color:var(--text1);line-height:1.35">Keep track.<br>Stay worry-free.</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:7px;line-height:1.5">Scan your receipts and warranty cards, and never miss an expiry again.</div>
+        </div>
+        <div style="width:56px;height:56px;border-radius:16px;background:var(--primary-soft);display:flex;align-items:center;justify-content:center;color:var(--primary);flex-shrink:0">
+          <svg viewBox="0 0 24 24" style="width:26px;height:26px"><path d="M4 4h13a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2H4z"/><path d="M8 2v4M11 2v4M14 2v4"/><path d="M8 11h7M8 15h5"/></svg>
+        </div>
+      </div>
+
+      <div class="stat-row" style="margin-top:16px">
+        <div class="stat">
+          <div class="top"><div class="ic" style="background:var(--success-soft);color:var(--success)"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></div><div class="dot" style="background:var(--success)"></div></div>
+          <div class="v">7</div><div class="l">Active</div>
+        </div>
+        <div class="stat">
+          <div class="top"><div class="ic" style="background:var(--warning-soft);color:var(--warning)"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></div><div class="dot" style="background:var(--warning)"></div></div>
+          <div class="v">2</div><div class="l">Expiring</div>
+        </div>
+        <div class="stat">
+          <div class="top"><div class="ic" style="background:var(--error-soft);color:var(--error)"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></div><div class="dot" style="background:var(--error)"></div></div>
+          <div class="v">1</div><div class="l">Expired</div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:10px">
+        <button class="btn-primary" onclick="go('scan')">
+          <svg viewBox="0 0 24 24" style="width:17px;height:17px"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>
+          Scan Document
+        </button>
+        <div style="display:flex;gap:10px">
+          <button class="btn-ghost" onclick="go('products')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>Add Manually
+          </button>
+          <button class="btn-ghost" onclick="go('repairs')">
+            <svg viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>Import Data
+          </button>
+        </div>
+      </div>
+
+      <div class="section-h"><div class="t">Expiring Soon</div><button class="see">See all</button></div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></div>
+        <div class="info"><div class="n">Samsung Galaxy S23</div><div class="bm">Samsung · SM-S911</div><div class="ex">Expires Mar 12, 2026</div></div>
+        <div class="right"><span class="pill" style="background:var(--warning-soft);color:var(--warning)"><span class="d" style="background:var(--warning)"></span>4 days left</span><span class="chev">›</span></div>
+      </div>
+
+      <div class="section-h"><div class="t">Recent Products</div><button class="see" onclick="go('products')">See all</button></div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9"/><rect x="2" y="16" width="20" height="4" rx="1"/></svg></div>
+        <div class="info"><div class="n">Dell XPS 15 Laptop</div><div class="bm">Dell · XPS 15 9530</div><div class="ex">Expires Oct 30, 2025</div></div>
+        <div class="right"><span class="pill" style="background:var(--error-soft);color:var(--error)"><span class="d" style="background:var(--error)"></span>Expired</span><span class="chev">›</span></div>
+      </div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <div class="info"><div class="n">LG 4K OLED TV</div><div class="bm">LG · OLED65C3</div><div class="ex">Expires Oct 18, 2025</div></div>
+        <div class="right"><span class="pill" style="background:var(--success-soft);color:var(--success)"><span class="d" style="background:var(--success)"></span>Active</span><span class="chev">›</span></div>
+      </div>
+    </div>
+
+    <!-- ============ PRODUCTS ============ -->
+    <div class="screen" id="s-products">
+      <div class="h-title">Products</div>
+      <div class="h-sub" style="margin-bottom:16px">10 devices tracked</div>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="search" placeholder="Search by name, brand, serial, or tag…">
+      </div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg></div>
+        <div class="info"><div class="n">Samsung Galaxy S23</div><div class="bm">Samsung · SM-S911</div><div class="ex">Expires Mar 12, 2026</div></div>
+        <div class="right"><span class="pill" style="background:var(--warning-soft);color:var(--warning)"><span class="d" style="background:var(--warning)"></span>4 days</span><span class="chev">›</span></div>
+      </div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9"/><rect x="2" y="16" width="20" height="4" rx="1"/></svg></div>
+        <div class="info"><div class="n">Dell XPS 15 Laptop</div><div class="bm">Dell · XPS 15 9530</div><div class="ex">Expired Oct 30, 2025</div></div>
+        <div class="right"><span class="pill" style="background:var(--error-soft);color:var(--error)"><span class="d" style="background:var(--error)"></span>Expired</span><span class="chev">›</span></div>
+      </div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <div class="info"><div class="n">LG 4K OLED TV</div><div class="bm">LG · OLED65C3</div><div class="ex">Expires Oct 18, 2025</div></div>
+        <div class="right"><span class="pill" style="background:var(--success-soft);color:var(--success)"><span class="d" style="background:var(--success)"></span>Active</span><span class="chev">›</span></div>
+      </div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><path d="M3 6h18M16 10a4 4 0 0 1-8 0"/></svg></div>
+        <div class="info"><div class="n">Sony WH-1000XM5</div><div class="bm">Sony · WH-1000XM5</div><div class="ex">Expires Jun 02, 2027</div></div>
+        <div class="right"><span class="pill" style="background:var(--success-soft);color:var(--success)"><span class="d" style="background:var(--success)"></span>Active</span><span class="chev">›</span></div>
+      </div>
+      <div class="pcard" onclick="go('detail')">
+        <div class="thumb"><svg viewBox="0 0 24 24" style="width:22px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></div>
+        <div class="info"><div class="n">Bose Drill Kit</div><div class="bm">Bosch · GSB 18V</div><div class="ex">No warranty date</div></div>
+        <div class="right"><span class="pill" style="background:var(--border-sub);color:var(--text2)"><span class="d" style="background:var(--text3)"></span>Unknown</span><span class="chev">›</span></div>
+      </div>
+    </div>
+
+    <!-- ============ PRODUCT DETAIL ============ -->
+    <div class="screen" id="s-detail">
+      <div style="display:flex;align-items:center;gap:6px;margin:-4px -8px 10px">
+        <button class="iconbtn" style="border:none;background:transparent" onclick="go('products')"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+        <div style="flex:1;font-size:14.5px;font-weight:600;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Samsung Galaxy S23</div>
+        <button class="iconbtn" style="border:none;background:transparent"><svg viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg></button>
+        <button class="iconbtn" style="border:none;background:transparent;color:var(--error)"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button>
+      </div>
+      <div class="tabs">
+        <button class="on" onclick="detTab(0,this)">Overview</button>
+        <button onclick="detTab(1,this)">Documents</button>
+        <button onclick="detTab(2,this)">Repairs</button>
+      </div>
+      <div id="det-0">
+        <div class="card hero">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+            <div style="font-size:20px;font-weight:700;color:var(--text1)">Samsung Galaxy S23</div>
+            <span class="pill" style="background:var(--warning-soft);color:var(--warning)"><span class="d" style="background:var(--warning)"></span>4 days left</span>
+          </div>
+          <div style="font-size:13px;color:var(--text2);margin-top:3px">Samsung · SM-S911</div>
+          <div class="prog"><i style="width:96%;background:var(--warning)"></i></div>
+          <div style="display:flex;justify-content:space-between;font-size:12.5px">
+            <span><span style="color:var(--text3)">Purchase date</span><br><b style="color:var(--text1);font-weight:600">Mar 12, 2024</b></span>
+            <span style="text-align:right"><span style="color:var(--text3)">Expiry</span><br><b style="color:var(--text1);font-weight:600">Mar 12, 2026</b></span>
+          </div>
+        </div>
+        <div class="icard" style="margin-top:14px">
+          <div class="t">Warranty Information</div>
+          <div class="kv"><span class="k">Status</span><span class="v" style="color:var(--warning)">4 days left</span></div>
+          <div class="kv"><span class="k">Days Remaining</span><span class="v">4</span></div>
+          <div class="kv"><span class="k">Warranty Period</span><span class="v">24 months</span></div>
+          <div class="kv"><span class="k">Warranty Expiry</span><span class="v">Mar 12, 2026</span></div>
+          <div class="kv"><span class="k">Warranty Provider</span><span class="v">Samsung Care+</span></div>
+        </div>
+        <div class="icard">
+          <div class="t">Purchase Information</div>
+          <div class="kv"><span class="k">Purchase Date</span><span class="v">Mar 12, 2024</span></div>
+          <div class="kv"><span class="k">Purchase Price</span><span class="v">USD 899.0</span></div>
+          <div class="kv"><span class="k">Store</span><span class="v">Amazon</span></div>
+        </div>
+        <div class="icard">
+          <div class="t">Product Identifiers</div>
+          <div class="kv"><span class="k">Serial Number</span>
+            <span class="v" style="font-family:ui-monospace,monospace;font-size:12.5px">S23-84KD2
+              <button class="iconbtn" style="all:unset;cursor:pointer;color:var(--text3)" title="Copy"><svg viewBox="0 0 24 24" style="width:13px;height:13px;vertical-align:-2px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
+            </span>
+          </div>
+          <div class="kv"><span class="k">IMEI</span>
+            <span class="v" style="font-family:ui-monospace,monospace;font-size:12.5px">
+              <span id="imei">•••••••••••••••</span>
+              <button onclick="toggleImei(this)" style="all:unset;cursor:pointer;color:var(--text3)"><svg id="imei-i" viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>
+            </span>
+          </div>
+          <div class="kv"><span class="k">Model</span><span class="v">SM-S911</span></div>
+        </div>
+      </div>
+      <div id="det-1" style="display:none">
+        <div class="pcard" style="cursor:default">
+          <div class="thumb" style="background:var(--primary-soft);color:var(--primary)"><svg viewBox="0 0 24 24" style="width:18px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+          <div class="info"><div class="n">receipt_amazon_2024.jpg</div><div class="ex">Added Mar 12, 2024 · <span class="review-ok">✓ reviewed</span></div></div>
+          <span class="chev">›</span>
+        </div>
+        <div class="pcard" style="cursor:default">
+          <div class="thumb" style="background:var(--primary-soft);color:var(--primary)"><svg viewBox="0 0 24 24" style="width:18px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg></div>
+          <div class="info"><div class="n">warranty_card.jpg</div><div class="ex">Added Mar 12, 2024 · ✓ reviewed</div></div>
+          <span class="chev">›</span>
+        </div>
+      </div>
+      <div id="det-2" style="display:none">
+        <div class="card" style="margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between"><b style="font-size:13.5px;color:var(--text1)">Screen replacement</b><span style="font-size:11px;color:var(--text3)">Aug 03, 2025</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px">Cracked display replaced under Samsung Care+.</div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><span style="font-size:11px;color:var(--text3)">Samsung Service</span><b style="font-size:12px">USD 49</b></div>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between"><b style="font-size:13.5px;color:var(--text1)">Diagnostic</b><span style="font-size:11px;color:var(--text3)">May 22, 2025</span></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:3px">Battery drain inspection; no fault found.</div>
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><span style="font-size:11px;color:var(--text3)">Local repair shop</span><b style="font-size:12px">USD 0</b></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ SCAN / OCR ============ -->
+    <div class="screen" id="s-scan">
+      <div class="h-title">Scan Document</div>
+      <div class="h-sub" style="margin-bottom:18px">OCR → review → confirm. Nothing is saved without you.</div>
+
+      <div id="scan-idle">
+        <button class="btn-primary" style="height:56px;margin-bottom:10px" onclick="scanStart()">
+          <svg viewBox="0 0 24 24" style="width:19px;height:19px"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+          Take Photo
+        </button>
+        <button class="btn-ghost" style="width:100%;height:56px" onclick="scanStart()">
+          <svg viewBox="0 0 24 24" style="width:17px;height:17px"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+          Choose Existing Image
+        </button>
+      </div>
+
+      <div id="scan-proc" style="display:none">
+        <div class="processing">
+          <div class="spinner"></div>
+          <div id="scan-msg" style="font-size:14px;color:var(--text1);font-weight:600">Securing document…</div>
+          <div style="font-size:11.5px;color:var(--text3);margin-top:6px">private storage → OCR → parse</div>
+        </div>
+      </div>
+
+      <div id="scan-review" style="display:none">
+        <div class="warnbox">
+          <div class="t">Please double-check</div>
+          <div class="w">• The date "21/09/2026" could be read day-first or month-first — we assumed 21 Sep. Please confirm.<br>• Detected IMEI may contain a misread digit (checksum failed).</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <b style="font-size:16px;color:var(--text1)">Review Detected Details</b>
+          <button class="iconbtn" style="width:36px;height:36px;border:1px solid var(--border-sub)" title="Re-parse" onclick="scanParse()"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+        </div>
+        <div style="font-size:10.5px;color:var(--text3);margin-bottom:12px">The ↻ icon re-reads the captured text. Edited fields are marked ✓.</div>
+        <div class="icard">
+          <div class="field"><label>PRODUCT NAME</label><input value="Samsung Galaxy S24 Ultra"></div>
+          <div class="field"><label>BRAND</label><input value="Samsung"></div>
+          <div class="field"><label>MODEL</label><input value="SM-S928B"></div>
+          <div class="field"><label>SERIAL NUMBER</label><input value="R5CR123456"></div>
+          <div class="field"><label>IMEI</label><input value="356789012345678"></div>
+          <div style="display:flex;gap:10px">
+            <div class="field" style="flex:1.4"><label>PRICE</label><input value="129999"></div>
+            <div class="field" style="flex:1"><label>CURRENCY</label><input value="INR"></div>
+          </div>
+          <div style="display:flex;gap:10px">
+            <div class="field" style="flex:1"><label>PURCHASE DATE</label><input value="21 Sep 2026"></div>
+            <div class="field" style="flex:1"><label>WARRANTY</label><input value="24 months"></div>
+          </div>
+        </div>
+        <button class="btn-primary" onclick="showMatch()">Confirm & Save</button>
+        <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="scanReset()">Cancel — keep as unreviewed</button>
+      </div>
+
+      <div id="scan-done" class="fade-in" style="display:none">
+        <div class="processing" style="padding-top:110px">
+          <div style="width:64px;height:64px;border-radius:999px;background:var(--success-soft);color:var(--success);display:flex;align-items:center;justify-content:center;margin:0 auto 16px">
+            <svg viewBox="0 0 24 24" style="width:30px;height:30px"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div style="font-size:16px;font-weight:700;color:var(--text1)">Product saved</div>
+          <div style="font-size:12.5px;color:var(--text2);margin-top:5px">Document attached · marked reviewed ✓</div>
+          <button class="btn-primary" style="margin-top:22px" onclick="scanReset();go('products')">View products</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ REPAIR LOCATIONS ============ -->
+    <div class="screen" id="s-repairs">
+      <div class="h-title">Repair Locations</div>
+      <div class="h-sub" style="margin-bottom:16px">Find a repair centre near you</div>
+      <div class="search-wrap">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input class="search" id="repair-q" placeholder="Search city, area or postcode">
+      </div>
+      <div style="display:flex;gap:10px;margin-bottom:16px">
+        <button class="btn-primary" style="flex:1;height:44px" onclick="repairSearch()">Search</button>
+        <button class="btn-ghost" style="height:44px" onclick="repairLoc()">
+          <svg viewBox="0 0 24 24" style="width:15px;height:15px;color:var(--primary)"><circle cx="12" cy="12" r="10"/><path d="m16.2 7.8-2 6.3-6.4 2.1 2-6.3z"/></svg>
+          Use my location
+        </button>
+      </div>
+      <div id="repair-empty">
+        <div class="empty">
+          <div class="t">Find repair centres</div>
+          <div class="b">Search by area or use your location to see nearby repair and service centres on OpenStreetMap.</div>
+        </div>
+      </div>
+      <div id="repair-results" style="display:none">
+        <div style="font-size:15px;font-weight:600;color:var(--text1);margin-bottom:2px">Nearby Repair Centres <span id="repair-near" style="color:var(--text3);font-weight:500;font-size:12px"></span></div>
+        <div class="osm">© OpenStreetMap contributors</div>
+        <div class="pcard" onclick="repairDetail(this)" data-n="Fixit Phone Repairs" data-a="12 Main St, 10115 Berlin" data-d="450 m" data-c="Electronics repair" data-h="Mo-Fr 09:00–18:00" data-t="+49 30 111 222">
+          <div class="thumb" style="background:var(--primary-soft);color:var(--primary);width:40px;height:40px"><svg viewBox="0 0 24 24" style="width:18px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div class="info"><div class="n">Fixit Phone Repairs</div><div class="bm">Electronics repair · 450 m</div><div class="ex">12 Main St, Berlin</div></div>
+          <span class="chev">›</span>
+        </div>
+        <div class="pcard" onclick="repairDetail(this)" data-n="Berlin Laptop Service" data-a="44 Tech Ave, 10557 Berlin" data-d="1.8 km" data-c="Computer" data-h="Mo-Sa 10:00–20:00" data-t="+49 30 444 555">
+          <div class="thumb" style="background:var(--primary-soft);color:var(--primary);width:40px;height:40px"><svg viewBox="0 0 24 24" style="width:18px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div class="info"><div class="n">Berlin Laptop Service</div><div class="bm">Computer · 1.8 km</div><div class="ex">44 Tech Ave, Berlin</div></div>
+          <span class="chev">›</span>
+        </div>
+        <div class="pcard" onclick="repairDetail(this)" data-n="City Electronics GmbH" data-a="9 Markt Pl, 10178 Berlin" data-d="3.2 km" data-c="Electronics" data-t="">
+          <div class="thumb" style="background:var(--primary-soft);color:var(--primary);width:40px;height:40px"><svg viewBox="0 0 24 24" style="width:18px"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg></div>
+          <div class="info"><div class="n">City Electronics GmbH</div><div class="bm">Electronics · 3.2 km</div><div class="ex">9 Markt Pl, Berlin</div></div>
+          <span class="chev">›</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ ALERTS ============ -->
+    <div class="screen" id="s-alerts">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="h-title">Alerts</div>
+        <button class="see" style="background:none;border:none;color:var(--primary);font-weight:600;font-size:12.5px;cursor:pointer;font-family:inherit" onclick="markAll(this)">Mark all read</button>
+      </div>
+      <div class="alert-card unread" onclick="readOne(this)">
+        <div class="dot" style="background:var(--warning)"></div>
+        <div style="flex:1"><div style="display:flex"><div class="t" style="flex:1">Warranty expiring soon</div><span class="d">21:12</span></div>
+        <div class="m">Samsung Galaxy S23 warranty expires on Mar 12, 2026 — 4 days remaining.</div></div>
+      </div>
+      <div class="alert-card unread" onclick="readOne(this)">
+        <div class="dot" style="background:var(--warning)"></div>
+        <div style="flex:1"><div style="display:flex"><div class="t" style="flex:1">1 day remaining</div><span class="d">09:30</span></div>
+        <div class="m">LG 4K OLED TV warranty ends tomorrow. Consider extending coverage.</div></div>
+      </div>
+      <div class="alert-card unread" onclick="readOne(this)">
+        <div class="dot" style="background:var(--error)"></div>
+        <div style="flex:1"><div style="display:flex"><div class="t" style="flex:1">Warranty expired</div><span class="d">Yesterday</span></div>
+        <div class="m">Dell XPS 15 Laptop warranty has expired.</div></div>
+      </div>
+      <div class="alert-card" onclick="readOne(this)">
+        <div class="dot" style="background:var(--info)"></div>
+        <div style="flex:1"><div style="display:flex"><div class="t" style="flex:1">Document attached</div><span class="d">Sep 18</span></div>
+        <div class="m">Receipt for Sony WH-1000XM5 was scanned and attached.</div></div>
+      </div>
+      <div class="alert-card" onclick="readOne(this)">
+        <div class="dot" style="background:var(--success)"></div>
+        <div style="flex:1"><div style="display:flex"><div class="t" style="flex:1">Product updated</div><span class="d">Sep 15</span></div>
+        <div class="m">Bose Drill Kit serial number was verified.</div></div>
+      </div>
+    </div>
+
+    <!-- ============ SETTINGS ============ -->
+    <div class="screen" id="s-settings">
+      <div class="h-title">Settings</div>
+      <div style="display:flex;align-items:center;gap:12px;margin:22px 0">
+        <div class="avatar" style="width:56px;height:56px;font-size:19px">A</div>
+        <div><div style="font-size:15.5px;font-weight:600;color:var(--text1)">Aakash (Local)</div><div style="font-size:12px;color:var(--text2)">Local Device</div></div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin:4px 0 8px 4px">APPEARANCE</div>
+      <div class="card" style="padding:0">
+        <div class="srow"><div class="ic" style="background:var(--primary-soft);color:var(--primary)"><svg viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="19" cy="13" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="10" cy="19" r="2.5"/><path d="M12 22a10 10 0 1 1 10-10c0 1.7-1.3 3-3 3h-2.5a2.5 2.5 0 0 0-2 4c.5.6.5 1.5-.5 3z"/></svg></div>
+          <div class="tx"><div class="tt">Theme</div><div class="ss">Follows system (dark & light designed)</div></div><span class="chev">›</span></div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin:18px 0 8px 4px">DATA & PRIVACY</div>
+      <div class="card" style="padding:0">
+        <div class="srow"><div class="ic" style="background:var(--success-soft);color:var(--success)"><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <div class="tx"><div class="tt">Private by design</div><div class="ss">All data stays on this device. No cloud, no tracking.</div></div></div>
+        <div class="srow"><div class="ic" style="background:var(--primary-soft);color:var(--primary)"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.7-4 3-9 3s-9-1.3-9-3M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/></svg></div>
+          <div class="tx"><div class="tt">Local-first architecture</div><div class="ss">Room database in app-private storage</div></div></div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin:18px 0 8px 4px">NOTIFICATIONS</div>
+      <div class="card" style="padding:0">
+        <div class="srow"><div class="ic" style="background:var(--warning-soft);color:var(--warning)"><svg viewBox="0 0 24 24"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></div>
+          <div class="tx"><div class="tt">Warranty reminders</div><div class="ss">Alerts at 30, 7 and 1 day before expiry</div></div></div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin:18px 0 8px 4px">DATA MANAGEMENT</div>
+      <div class="card" style="padding:0">
+        <div class="srow"><div class="ic" style="background:var(--primary-soft);color:var(--primary)"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg></div>
+          <div class="tx"><div class="tt">Export data</div><div class="ss">Save a JSON + CSV backup to Downloads</div></div><span class="chev">›</span></div>
+        <div class="srow"><div class="ic" style="background:var(--primary-soft);color:var(--primary)"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5M12 3v12"/></svg></div>
+          <div class="tx"><div class="tt">Import data (JSON)</div><div class="ss">Validated preview before anything is written</div></div><span class="chev">›</span></div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:var(--text3);margin:18px 0 8px 4px">APP</div>
+      <div class="card" style="padding:0">
+        <div class="srow"><div class="ic" style="background:var(--border-sub);color:var(--text2)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
+          <div class="tx"><div class="tt">About WarrantyVault</div><div class="ss">Version 1.0.0 · Kotlin · Compose · Room · ML Kit</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Glass bottom nav ===== -->
+  <div class="glassnav" id="glassnav">
+    <button class="tab on" data-s="dashboard" onclick="go('dashboard',this)">
+      <svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>Home</button>
+    <button class="tab" data-s="products" onclick="go('products',this)">
+      <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>Products</button>
+    <button class="tab" data-s="scan" onclick="go('scan',this)">
+      <svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/><path d="M7 12h10"/></svg>Scan</button>
+    <button class="tab" data-s="repairs" onclick="go('repairs',this)">
+      <svg viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Repairs</button>
+    <button class="tab" data-s="settings" onclick="go('settings',this)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5h0a1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>Settings</button>
+  </div>
+
+  <!-- ===== Match dialog ===== -->
+  <div class="modal-bg" id="match-modal">
+    <div class="modal">
+      <div class="mt">Existing product found</div>
+      <div class="ms">Exact serial match for <b style="color:var(--text1)">R5CR123456</b></div>
+      <div class="card" style="margin:14px 0;padding:12px">
+        <div style="display:flex;justify-content:space-between"><span class="k" style="color:var(--text3);font-size:12px">Product</span><b style="font-size:13px;color:var(--text1)">Samsung Galaxy S23</b></div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px"><span style="color:var(--text3);font-size:12px">Reason</span><span style="font-size:12.5px;color:var(--success);font-weight:600">Same serial number</span></div>
+      </div>
+      <div class="acts" style="flex-direction:column">
+        <button class="btn-primary" onclick="matchDone('Document attached to existing product.')">Use existing</button>
+        <button class="btn-primary" style="background:var(--primary-soft);color:var(--primary)" onclick="matchDone('Product updated with your reviewed changes.')">Update existing (fills blanks only)</button>
+        <button class="btn-ghost" style="width:100%" onclick="matchDone('Created a new product and attached the document.')">Create new product</button>
+        <button class="btn-ghost" style="width:100%;border:none" onclick="hideMatch()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Location detail sheet ===== -->
+  <div class="modal-bg" id="loc-modal">
+    <div class="modal">
+      <div class="mt" id="ld-n"></div>
+      <div class="ms" id="ld-a"></div>
+      <div style="margin:14px 0">
+        <div class="row"><span class="k">Distance</span><span class="v" id="ld-d"></span></div>
+        <div class="row" id="ld-c-r"><span class="k">Category</span><span class="v" id="ld-c"></span></div>
+        <div class="row" id="ld-h-r"><span class="k">Hours</span><span class="v" id="ld-h"></span></div>
+        <div class="row" id="ld-t-r"><span class="k">Phone</span><span class="v" id="ld-t"></span></div>
+        <div class="osm" style="margin-top:6px">Source: OpenStreetMap</div>
+      </div>
+      <div class="acts">
+        <button class="btn-primary" id="ld-call">Call</button>
+        <button class="btn-ghost" onclick="hideLoc()">Directions ↗</button>
+      </div>
+      <button class="btn-ghost" style="width:100%;border:none;margin-top:4px" onclick="hideLoc()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ===== Theme =====
+  function setTheme(t){
+    document.body.dataset.theme=t;
+    document.getElementById('th-dark').classList.toggle('on',t==='dark');
+    document.getElementById('th-light').classList.toggle('on',t==='light');
+  }
+  // ===== Width =====
+  function setWidth(btn,w){
+    document.getElementById('phone').style.width=w+'px';
+    btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+  }
+  // ===== Navigation =====
+  const navMap={dashboard:0,products:1,scan:2,repairs:3,settings:4};
+  function go(name,btn){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    const el=document.getElementById('s-'+name);
+    el.classList.add('active'); el.scrollTop=0;
+    const idx=navMap[name];
+    document.querySelectorAll('#glassnav .tab').forEach((t,i)=>{
+      t.classList.toggle('on',i===idx);
+    });
+    if(btn&&btn.closest('.screen-list')){
+      document.querySelectorAll('.screen-list button').forEach(b=>b.classList.remove('on'));
+      btn.classList.add('on');
+    }
+  }
+  // ===== Product detail tabs =====
+  function detTab(i,btn){
+    btn.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    for(let k=0;k<3;k++)document.getElementById('det-'+k).style.display=k===i?'block':'none';
+  }
+  // ===== IMEI mask =====
+  let imeiShown=false;
+  function toggleImei(btn){
+    imeiShown=!imeiShown;
+    document.getElementById('imei').textContent=imeiShown?'356789012345678':'•••••••••••••••';
+    btn.innerHTML=imeiShown
+      ?'<svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19M14.12 14.12a3 3 0 1 1-4.24-4.24"/><path d="M1 1l22 22"/></svg>'
+      :'<svg viewBox="0 0 24 24" style="width:14px;height:14px;vertical-align:-2px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  }
+  // ===== Scan flow =====
+  let scanT=[];
+  function scanStart(){
+    document.getElementById('scan-idle').style.display='none';
+    document.getElementById('scan-review').style.display='none';
+    document.getElementById('scan-done').style.display='none';
+    const p=document.getElementById('scan-proc'); p.style.display='block'; p.classList.add('fade-in');
+    const msgs=['Securing document…','Reading text…','Extracting details…'];
+    let i=0;
+    document.getElementById('scan-msg').textContent=msgs[0];
+    clearInterval(scanT);
+    scanT.push(setTimeout(()=>document.getElementById('scan-msg').textContent=msgs[1],900));
+    scanT.push(setTimeout(()=>document.getElementById('scan-msg').textContent=msgs[2],1800));
+    scanT.push(setTimeout(()=>{
+      p.style.display='none';
+      const r=document.getElementById('scan-review'); r.style.display='block'; r.classList.add('fade-in');
+    },2700));
+  }
+  function scanParse(){
+    const r=document.getElementById('scan-review');
+    r.style.display='none'; void r.offsetWidth; r.style.display='block'; r.classList.add('fade-in');
+  }
+  function scanReset(){
+    clearInterval(scanT);
+    ['scan-proc','scan-review','scan-done'].forEach(id=>{
+      const e=document.getElementById(id); e.style.display='none'; e.classList.remove('fade-in');
+    });
+    document.getElementById('scan-idle').style.display='block';
+  }
+  // ===== Match dialog =====
+  function showMatch(){document.getElementById('match-modal').classList.add('show');}
+  function hideMatch(){document.getElementById('match-modal').classList.remove('show');}
+  function matchDone(msg){
+    hideMatch();
+    document.getElementById('scan-review').style.display='none';
+    const d=document.getElementById('scan-done'); d.style.display='block'; d.classList.add('fade-in');
+    d.querySelector('div[style*="padding-top"] .fade-in, div.processing div:nth-child(2)').textContent='Product saved';
+  }
+  // ===== Alerts =====
+  function readOne(el){
+    el.classList.remove('unread');
+    el.querySelector('.dot').style.opacity='.35';
+  }
+  function markAll(btn){
+    document.querySelectorAll('.alert-card').forEach(readOne);
+    btn.textContent='All caught up'; btn.disabled=true; btn.style.opacity=.5;
+  }
+  // ===== Repair locations =====
+  function repairSearch(){
+    const q=document.getElementById('repair-q').value.trim();
+    showRepair(q? '· near '+q : '');
+  }
+  function repairLoc(){
+    document.getElementById('repair-q').value='';
+    showRepair('· near my location');
+  }
+  function showRepair(nearLabel){
+    document.getElementById('repair-empty').style.display='none';
+    const r=document.getElementById('repair-results');
+    r.style.display='block'; r.classList.remove('fade-in'); void r.offsetWidth; r.classList.add('fade-in');
+    document.getElementById('repair-near').textContent=nearLabel;
+  }
+  function repairDetail(card){
+    const d=card.dataset;
+    document.getElementById('ld-n').textContent=d.n;
+    document.getElementById('ld-a').textContent=d.a;
+    document.getElementById('ld-d').textContent=d.d;
+    document.getElementById('ld-c').textContent=d.c;
+    document.getElementById('ld-h').textContent=d.h||'Not available';
+    document.getElementById('ld-h-r').style.display=d.h?'flex':'none';
+    document.getElementById('ld-t').textContent=d.t||'Not available';
+    document.getElementById('ld-t-r').style.display=d.t?'flex':'none';
+    document.getElementById('ld-call').style.display=d.t?'flex':'none';
+    document.getElementById('loc-modal').classList.add('show');
+  }
+  function hideLoc(){document.getElementById('loc-modal').classList.remove('show');}
+</script>
+</body>
+</html>

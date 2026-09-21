@@ -1,89 +1,81 @@
 package com.warrantyvault.ui.theme
 
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 
-// WarrantyVault brand colors (from web CSS tokens)
-val BrandPrimary = Color(0xFF2457F5)
-val BrandAccent = Color(0xFF12A7C9)
-val BrandInk = Color(0xFF1C40AD)
+/**
+ * Legacy color constants, kept as thin aliases over the new token system so existing
+ * references compile while screens migrate to WvTheme.colors. New code should not use
+ * these; use the semantic tokens from Theme.kt.
+ */
+val BrandPrimary: Color get() = darkWvColors().primary
+val BrandAccent: Color get() = darkWvColors().info
+val BrandInk: Color get() = darkWvColors().primaryPressed
 
-// Semantic colors (light theme)
-val Ok = Color(0xFF0B7C71)
-val OkSoft = Color(0xFFE1F7F3)
-val Warn = Color(0xFFA05C05)
-val WarnSoft = Color(0xFFFDf0D9)
-val Danger = Color(0xFFC13648)
-val DangerSoft = Color(0xFFffe9Ec)
-val Neutral = Color(0xFF5F6E84)
-val NeutralSoft = Color(0xFFEEF2F8)
-val Info = Color(0xFF1E6BC9)
-val InfoSoft = Color(0xFFE7F0FD)
+val Ok: Color get() = lightWvColors().success
+val OkSoft: Color get() = lightWvColors().successSoft
+val Warn: Color get() = lightWvColors().warning
+val WarnSoft: Color get() = lightWvColors().warningSoft
+val Danger: Color get() = lightWvColors().error
+val DangerSoft: Color get() = lightWvColors().errorSoft
+val Neutral: Color get() = lightWvColors().textMuted
+val NeutralSoft: Color get() = lightWvColors().borderSubtle
+val Info: Color get() = lightWvColors().info
+val InfoSoft: Color get() = lightWvColors().infoSoft
 
-// Semantic colors (dark theme)
-val OkDark = Color(0xFF34C9B4)
-val OkSoftDark = Color(0xFF102E2C)
-val WarnDark = Color(0xFFf0a03c)
-val WarnSoftDark = Color(0xFF33240f)
-val DangerDark = Color(0xFFff7b8a)
-val DangerSoftDark = Color(0xFF351A20)
-val NeutralDark = Color(0xFF93A4BD)
-val NeutralSoftDark = Color(0xFF1B2740)
-val InfoDark = Color(0xFF6cb0ff)
-val InfoSoftDark = Color(0xFF14243D)
+val OkDark: Color get() = darkWvColors().success
+val OkSoftDark: Color get() = darkWvColors().successSoft
+val WarnDark: Color get() = darkWvColors().warning
+val WarnSoftDark: Color get() = darkWvColors().warningSoft
+val DangerDark: Color get() = darkWvColors().error
+val DangerSoftDark: Color get() = darkWvColors().errorSoft
+val NeutralDark: Color get() = darkWvColors().textMuted
+val NeutralSoftDark: Color get() = darkWvColors().borderSubtle
+val InfoDark: Color get() = darkWvColors().info
+val InfoSoftDark: Color get() = darkWvColors().infoSoft
 
-// Surface palette (light)
-val CanvasLight = Color(0xFFEDF2F9)
-val SurfaceLight = Color(0xFFFFFFFF)
-val Surface2Light = Color(0xFFF7F9FD)
-val Surface3Light = Color(0xFFEEF3FA)
-val InkLight = Color(0xFF0F1F3A)
-val Ink2Light = Color(0xFF4D5C76)
-val Ink3Light = Color(0xFF626D7F)
-val LineLight = Color(0xFFDEE6F1)
-val Line2Light = Color(0xFFC6D4E8)
+val CanvasLight: Color get() = lightWvColors().background
+val SurfaceLight: Color get() = lightWvColors().surface
+val Surface2Light: Color get() = lightWvColors().surfaceElevated
+val Surface3Light: Color get() = lightWvColors().surfaceHighest
+val InkLight: Color get() = lightWvColors().textPrimary
+val Ink2Light: Color get() = lightWvColors().textSecondary
+val Ink3Light: Color get() = lightWvColors().textMuted
+val LineLight: Color get() = lightWvColors().border
+val Line2Light: Color get() = lightWvColors().border
 
-// Surface palette (dark)
-val CanvasDark = Color(0xFF080F1E)
-val SurfaceDark = Color(0xFF121C30)
-val Surface2Dark = Color(0xFF16223A)
-val Surface3Dark = Color(0xFF1B2942)
-val InkDark = Color(0xFFEEF4FF)
-val Ink2Dark = Color(0xFFA7B6CF)
-val Ink3Dark = Color(0xFF8492AB)
-val LineDark = Color(0xFF22314C)
-val Line2Dark = Color(0xFF2F4160)
+val CanvasDark: Color get() = darkWvColors().background
+val SurfaceDark: Color get() = darkWvColors().surface
+val Surface2Dark: Color get() = darkWvColors().surfaceElevated
+val Surface3Dark: Color get() = darkWvColors().surfaceHighest
+val InkDark: Color get() = darkWvColors().textPrimary
+val Ink2Dark: Color get() = darkWvColors().textSecondary
+val Ink3Dark: Color get() = darkWvColors().textMuted
+val LineDark: Color get() = darkWvColors().border
+val Line2Dark: Color get() = darkWvColors().border
 
-// Nav glass (dark in both themes)
-val NavBgLight = Color(0xFF091630).copy(alpha = 0.9f)
-val NavBgDark = Color(0xFF060D1C).copy(alpha = 0.92f)
-val NavInkLight = Color(0xFFA9BAD4)
-val NavInkDark = Color(0xFF9DB0CD)
-val NavLineLight = Color(0xFFFFFFFF).copy(alpha = 0.1f)
-val NavLineDark = Color(0xFFFFFFFF).copy(alpha = 0.08f)
+val NavBgLight: Color get() = lightWvColors().glassNav
+val NavBgDark: Color get() = darkWvColors().glassNav
+val NavInkLight: Color get() = lightWvColors().textSecondary
+val NavInkDark: Color get() = darkWvColors().textSecondary
+val NavLineLight: Color get() = lightWvColors().glassBorder
+val NavLineDark: Color get() = darkWvColors().glassBorder
 
-// Geometry tokens
-val RadiusXS = 8.dp
-val RadiusSM = 10.dp
-val RadiusMD = 14.dp
-val RadiusLG = 18.dp
-val RadiusXL = 24.dp
-val RadiusPill = 999.dp
+// Geometry aliases (old names)
+val RadiusXS = WvDimens.RadiusSmall
+val RadiusSM = WvDimens.RadiusSmall
+val RadiusMD = WvDimens.RadiusMedium
+val RadiusLG = WvDimens.RadiusMedium
+val RadiusXL = WvDimens.RadiusLarge
+val RadiusPill = WvDimens.RadiusPill
+val Gutter = WvDimens.ScreenGutter
 
-// Spacing
-val Gutter = 18.dp
+// Status helpers (token-based)
+fun statusColor(status: String, dark: Boolean): Color =
+    (if (dark) darkWvColors() else lightWvColors()).statusColors(status).first
 
-// Status color helpers
-fun statusColor(status: String, dark: Boolean): Color = when (status) {
-    "active" -> if (dark) OkDark else Ok
-    "expiring_soon" -> if (dark) WarnDark else Warn
-    "expired" -> if (dark) DangerDark else Danger
-    else -> if (dark) NeutralDark else Neutral
-}
+fun statusSoftColor(status: String, dark: Boolean): Color =
+    (if (dark) darkWvColors() else lightWvColors()).statusColors(status).second
 
-fun statusSoftColor(status: String, dark: Boolean): Color = when (status) {
-    "active" -> if (dark) OkSoftDark else OkSoft
-    "expiring_soon" -> if (dark) WarnSoftDark else WarnSoft
-    "expired" -> if (dark) DangerSoftDark else DangerSoft
-    else -> if (dark) NeutralSoftDark else NeutralSoft
-}
+/** Distance label helper for UI (delegates to the repair domain formatter). */
+fun formatDistanceLabel(meters: Double): String =
+    com.warrantyvault.repair.formatDistance(meters)

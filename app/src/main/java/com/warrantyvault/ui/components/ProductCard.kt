@@ -2,141 +2,135 @@ package com.warrantyvault.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.warrantyvault.data.Product
+import coil.compose.AsyncImage
 import com.warrantyvault.WarrantyEngine
-import com.warrantyvault.ui.theme.*
+import com.warrantyvault.data.Product
+import com.warrantyvault.ui.theme.WvDimens
+import com.warrantyvault.ui.theme.darkWvColors
+import com.warrantyvault.ui.theme.lightWvColors
+import java.io.File
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
+/**
+ * Compact product card. Neutral surface; only the status indicator carries
+ * semantic colour. Shows real thumbnail (from the product's document) when available.
+ */
 @Composable
 fun WarrantyProductCard(
     product: Product,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    thumbnailPath: String? = null
 ) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
     val info = WarrantyEngine.warrantyStatusOf(product.purchaseDate, product.warrantyExpiryDate)
-    val isDark = MaterialTheme.colorScheme.background == CanvasDark
-    val statusColor = statusColor(info.status, isDark)
-    val softColor = statusSoftColor(info.status, isDark)
+    val (statusColor, statusSoft) = wv.statusColors(info.status)
 
     val dateFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
 
-    Card(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 6.dp),
-        shape = RoundedCornerShape(RadiusLG),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            .clip(RoundedCornerShape(WvDimens.RadiusMedium))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(WvDimens.RadiusMedium),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle)
     ) {
         Row(
-            modifier = Modifier
-                .padding(14.dp)
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.padding(WvDimens.Space3),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Thumbnail / placeholder
+            // Thumbnail / initial placeholder
             Box(
                 modifier = Modifier
-                    .size(52.dp)
-                    .background(
-                        Brush.horizontalGradient(
-                            colors = listOf(BrandPrimary.copy(alpha = 0.15f), BrandAccent.copy(alpha = 0.15f))
-                        ),
-                        shape = RoundedCornerShape(RadiusMD)
-                    ),
+                    .size(WvDimens.Thumb)
+                    .background(wv.surfaceHighest, RoundedCornerShape(WvDimens.RadiusSmall)),
                 contentAlignment = Alignment.Center
             ) {
-                val initial = product.productName.firstOrNull()?.uppercase() ?: "?"
-                Text(
-                    text = initial.toString(),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = BrandPrimary
-                )
+                if (thumbnailPath != null && File(thumbnailPath).exists()) {
+                    AsyncImage(
+                        model = File(thumbnailPath),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        Icons.Default.Devices,
+                        contentDescription = null,
+                        tint = wv.textMuted,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(Modifier.width(WvDimens.Space3))
 
-            // Product info
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = product.productName,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    color = wv.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-
                 val brandModel = listOfNotNull(product.brand, product.model).joinToString(" · ")
                 if (brandModel.isNotEmpty()) {
                     Text(
                         text = brandModel,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = wv.textSecondary,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-
                 if (product.warrantyExpiryDate != null) {
                     Text(
-                        text = "Expires: ${dateFormat.format(Date(product.warrantyExpiryDate!!))}",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 11.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Expires ${dateFormat.format(Date(product.warrantyExpiryDate!!))}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = wv.textMuted
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(Modifier.width(WvDimens.Space2))
 
-            // Right side - status badge + chevron
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Surface(
-                    shape = RoundedCornerShape(RadiusPill),
-                    color = softColor,
+                    shape = RoundedCornerShape(WvDimens.RadiusPill),
+                    color = statusSoft,
                     contentColor = statusColor
                 ) {
                     Text(
                         text = info.label,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 11.sp
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
-
                 Icon(
-                    imageVector = Icons.Default.ChevronRight,
+                    Icons.Default.ChevronRight,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = wv.textMuted,
                     modifier = Modifier.size(18.dp)
                 )
             }

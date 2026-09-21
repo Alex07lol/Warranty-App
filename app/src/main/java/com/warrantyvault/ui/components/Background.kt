@@ -2,6 +2,7 @@ package com.warrantyvault.ui.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -12,74 +13,49 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import com.warrantyvault.ui.theme.BrandAccent
-import com.warrantyvault.ui.theme.BrandPrimary
-import com.warrantyvault.ui.theme.CanvasDark
-import com.warrantyvault.ui.theme.CanvasLight
+import com.warrantyvault.ui.theme.darkWvColors
+import com.warrantyvault.ui.theme.lightWvColors
 import kotlin.math.max
 
+/**
+ * App background: flat neutral canvas with one very restrained radial tint so the
+ * screen doesn't feel flat. No neon gradients, no glow.
+ */
 @Composable
 fun WarrantyBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    val isDark = MaterialTheme.colorScheme.background == CanvasDark
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
 
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        // Base canvas color
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = if (isDark) CanvasDark else CanvasLight
+            color = wv.background
         ) {}
 
-        // Radial gradient 1 - top left
+        // Single, very subtle radial tint from the top edge.
         Canvas(
             modifier = Modifier.fillMaxSize()
         ) {
-            val centerX = size.width * 0.06f
-            val centerY = size.height * -0.12f
-            val radius = max(size.width, size.height) * 0.45f
-
+            val radius = max(size.width, size.height) * 0.55f
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        BrandPrimary.copy(alpha = 0.1f),
+                        wv.primary.copy(alpha = 0.045f),
                         Color.Transparent
                     ),
-                    center = Offset(centerX, centerY),
+                    center = Offset(size.width * 0.5f, -size.height * 0.18f),
                     radius = radius
                 ),
-                topLeft = Offset(0f, 0f),
+                topLeft = Offset.Zero,
                 size = size
             )
         }
 
-        // Radial gradient 2 - bottom right
-        Canvas(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            val centerX = size.width * 1.04f
-            val centerY = size.height * 1.08f
-            val radius = max(size.width, size.height) * 0.42f
-
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        BrandAccent.copy(alpha = 0.1f),
-                        Color.Transparent
-                    ),
-                    center = Offset(centerX, centerY),
-                    radius = radius
-                ),
-                topLeft = Offset(0f, 0f),
-                size = size
-            )
-        }
-
-        // Content
         content()
     }
 }

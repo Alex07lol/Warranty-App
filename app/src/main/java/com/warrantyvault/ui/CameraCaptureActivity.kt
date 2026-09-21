@@ -1,11 +1,15 @@
 package com.warrantyvault.ui
 
+import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -13,7 +17,6 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,11 +31,13 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,20 +61,15 @@ import java.io.File
 /**
  * Real CameraX document capture: live preview -> capture -> shot preview -> retake/accept.
  * Returns the captured JPEG path via the activity result.
+ *
+ * Permission authority: exactly one launcher, requested from onCreate via state. Denial shows
+ * guidance (including an "open settings" path when permanently denied) instead of a dead screen.
  */
 class CameraCaptureActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OUTPUT_PATH = "extra_output_path"
     }
-
-    private val permissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-            if (!granted) {
-                setResult(Activity.RESULT_CANCELED)
-                finish()
-            }
-        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,11 +95,6 @@ class CameraCaptureActivity : ComponentActivity() {
             }
         }
     }
-
-    override fun onStart() {
-        super.onStart()
-        permissionLauncher.launch(android.Manifest.permission.CAMERA)
-    }
 }
 
 @Composable
@@ -114,17 +109,65 @@ private fun CameraCaptureContent(
 
     var capturedPath by remember { mutableStateOf<String?>(null) }
     var cameraError by remember { mutableStateOf<String?>(null) }
-    var hasPermission by remember { mutableStateOf(false) }
 
-    val requestPermission = rememberLauncherForActivityResult(
+    // Single permission authority for this activity.
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
+        )
+    }
+    var permanentlyDenied by remember { mutableStateOf(false) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { granted -> hasPermission = granted }
+    ) { granted ->
+        hasPermission = granted
+        // If the system stops showing the rationale, the user chose "don't ask again";
+        // guide them to app settings instead of looping on a dead dialog.
+        permanentlyDenied = !granted && !shouldShowRationale(context)
+    }
 
-    LaunchedEffect(Unit) { requestPermission.launch(android.Manifest.permission.CAMERA) }
+    // Request exactly once per entry into the activity.
+    LaunchedEffect(Unit) {
+        if (!hasPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        if (capturedPath == null) {
-            if (hasPermission) {
+        when {
+            capturedPath != null -> {
+                AsyncImage(
+                    model = ImageRequest.Builder(context).data(File(capturedPath!!)).build(),
+                    contentDescription = "Captured document",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 48.dp),
+                    horizontalArrangement = Arrangement.spacedBy(48.dp)
+                ) {
+                    IconButton(
+                        onClick = {
+                            File(capturedPath!!).delete()
+                            capturedPath = null
+                        },
+                        modifier = Modifier.size(56.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
+                    ) {
+                        Icon(Icons.Default.Replay, contentDescription = "Retake", tint = Color.White)
+                    }
+                    IconButton(
+                        onClick = { onAccepted(capturedPath!!) },
+                        modifier = Modifier.size(56.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = "Use photo", tint = Color.White)
+                    }
+                }
+            }
+            hasPermission -> {
                 AndroidView(
                     factory = { ctx ->
                         val previewView = PreviewView(ctx)
@@ -147,85 +190,88 @@ private fun CameraCaptureContent(
                     },
                     modifier = Modifier.fillMaxSize()
                 )
-            }
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text(
-                    "Position the document flat and fill the frame",
-                    color = Color.White,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(48.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    IconButton(onClick = onCancelled, modifier = Modifier.size(56.dp)) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Cancel", tint = Color.White)
-                    }
-                    IconButton(
-                        onClick = {
-                            if (!hasPermission) return@IconButton
-                            val options = ImageCapture.OutputFileOptions.Builder(outputFile).build()
-                            imageCapture.takePicture(
-                                options,
-                                ContextCompat.getMainExecutor(context),
-                                object : ImageCapture.OnImageSavedCallback {
-                                    override fun onImageSaved(res: ImageCapture.OutputFileResults) {
-                                        capturedPath = outputFile.path
-                                    }
-                                    override fun onError(e: ImageCaptureException) {
-                                        cameraError = "Capture failed: ${e.message}"
-                                    }
-                                }
-                            )
-                        },
-                        modifier = Modifier
-                            .size(84.dp)
-                            .background(Color.White, CircleShape)
+                    Text(
+                        "Position the document flat and fill the frame",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(48.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Capture", tint = Color.Black)
+                        IconButton(onClick = onCancelled, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Default.ArrowBack, contentDescription = "Cancel", tint = Color.White)
+                        }
+                        IconButton(
+                            onClick = {
+                                val options = ImageCapture.OutputFileOptions.Builder(outputFile).build()
+                                imageCapture.takePicture(
+                                    options,
+                                    ContextCompat.getMainExecutor(context),
+                                    object : ImageCapture.OnImageSavedCallback {
+                                        override fun onImageSaved(res: ImageCapture.OutputFileResults) {
+                                            capturedPath = outputFile.path
+                                        }
+                                        override fun onError(e: ImageCaptureException) {
+                                            cameraError = "Capture failed: ${e.message}"
+                                        }
+                                    }
+                                )
+                            },
+                            modifier = Modifier
+                                .size(84.dp)
+                                .background(Color.White, CircleShape)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = "Capture", tint = Color.Black)
+                        }
+                        Box(modifier = Modifier.size(56.dp)) // balances the row
                     }
-                    Box(modifier = Modifier.size(56.dp)) // balances the row
-                }
-                cameraError?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    cameraError?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
-        } else {
-            AsyncImage(
-                model = ImageRequest.Builder(context).data(File(capturedPath!!)).build(),
-                contentDescription = "Captured document",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-            )
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp),
-                horizontalArrangement = Arrangement.spacedBy(48.dp)
-            ) {
-                IconButton(
-                    onClick = {
-                        File(capturedPath!!).delete()
-                        capturedPath = null
-                    },
-                    modifier = Modifier.size(56.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
+            else -> {
+                // Permission missing: graceful guidance, never a dead screen.
+                Column(
+                    modifier = Modifier.align(Alignment.Center).padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Icon(Icons.Default.Replay, contentDescription = "Retake", tint = Color.White)
-                }
-                IconButton(
-                    onClick = { onAccepted(capturedPath!!) },
-                    modifier = Modifier.size(56.dp).background(MaterialTheme.colorScheme.primary, CircleShape)
-                ) {
-                    Icon(Icons.Default.Check, contentDescription = "Use photo", tint = Color.White)
+                    Text(
+                        "Camera access is needed to photograph your document.",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        "You can also cancel and choose an existing image instead.",
+                        color = Color.White.copy(alpha = 0.7f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    if (permanentlyDenied) {
+                        Button(onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                    .setData(Uri.parse("package:${context.packageName}"))
+                            )
+                        }) { Text("Open Settings") }
+                    }
+                    TextButton(onClick = onCancelled) { Text("Cancel") }
                 }
             }
         }
     }
 }
+
+private fun shouldShowRationale(context: android.content.Context): Boolean =
+    (context as? Activity)?.let {
+        androidx.core.app.ActivityCompat.shouldShowRequestPermissionRationale(it, Manifest.permission.CAMERA)
+    } ?: false

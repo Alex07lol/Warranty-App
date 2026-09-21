@@ -1,39 +1,33 @@
 package com.warrantyvault.ui.components
 
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.warrantyvault.WarrantyInfo
-import com.warrantyvault.ui.theme.*
+import com.warrantyvault.ui.theme.WvDimens
+import com.warrantyvault.ui.theme.darkWvColors
+import com.warrantyvault.ui.theme.lightWvColors
 
 @Composable
 fun WarrantyStatusBadge(
     info: WarrantyInfo,
     modifier: Modifier = Modifier
 ) {
-    val dark = MaterialTheme.colorScheme.background == CanvasDark
-    val statusColor = statusColor(info.status, dark)
-    val softColor = statusSoftColor(info.status, dark)
-
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(RadiusPill),
-        color = softColor,
-        contentColor = statusColor
-    ) {
-        Text(
-            text = info.label,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp
-        )
-    }
+    StatusBadge(status = info.status, label = info.label, modifier = modifier)
 }
 
 @Composable
@@ -42,22 +36,42 @@ fun WarrantyStatusBadge(
     label: String,
     modifier: Modifier = Modifier
 ) {
-    val dark = MaterialTheme.colorScheme.background == CanvasDark
-    val statusColor = statusColor(status, dark)
-    val softColor = statusSoftColor(status, dark)
+    StatusBadge(status = status, label = label, modifier = modifier)
+}
+
+/** Semantic pill: soft container + colored text + small dot (colour is not the only cue). */
+@Composable
+fun StatusBadge(
+    status: String,
+    label: String,
+    modifier: Modifier = Modifier
+) {
+    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val colors: Pair<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color> = wv.statusColors(status)
+    val color = colors.first
+    val soft = colors.second
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(RadiusPill),
-        color = softColor,
-        contentColor = statusColor
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(WvDimens.RadiusPill),
+        color = soft,
+        contentColor = color
     ) {
-        Text(
-            text = label,
+        Row(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = 11.sp
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .background(color, CircleShape)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }

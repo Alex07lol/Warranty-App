@@ -6,9 +6,11 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
@@ -33,7 +35,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.ocr.ProductMatch
 import com.warrantyvault.ocr.ReviewDraft
 import com.warrantyvault.ocr.ScanStep
@@ -60,9 +61,12 @@ fun ScanOcrScreen(
         val path = result.data?.getStringExtra(CameraCaptureActivity.EXTRA_OUTPUT_PATH)
         if (path != null) vm.onImageSelected(Uri.fromFile(java.io.File(path)))
     }
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    // OpenDocument: MIME-filtered documents contract; no gallery/storage permission needed and
+    // no persistent grant required because the bytes are copied into private storage at once.
+    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.onImageSelected(it) }
     }
+    val pickerMimes = arrayOf("image/*", "application/pdf")
 
     Scaffold(topBar = { TopAppBar(title = { Text("Scan Document") }) }) { padding ->
         WarrantyBackground(modifier = Modifier.padding(padding)) {
@@ -79,19 +83,21 @@ fun ScanOcrScreen(
                         ScanInputPane(
                             state = state,
                             onCamera = { cameraLauncher.launch(android.content.Intent(context, CameraCaptureActivity::class.java)) },
-                            onPick = { pickImage.launch("image/*") },
+                            onPick = { pickImage.launch(pickerMimes) },
                             onDismissError = { vm.dismissError() }
                         )
                     ScanStep.REVIEW_REQUIRED, ScanStep.SAVING ->
                         state.reviewDraft?.let { draft ->
                             ReviewPane(
                                 draft = draft,
+                                state = state,
                                 isSaving = step == ScanStep.SAVING,
                                 onEdit = { field, value -> vm.updateField(field, value) },
                                 onDateEdit = { field, millis -> vm.updateDateField(field, millis) },
                                 onConfirm = { vm.confirmDraft() },
                                 onCancel = { vm.cancelReview() },
-                                onRescan = { vm.rescan() }
+                                onReparse = { vm.rescan() },
+                                onRetake = { vm.cancelReview() }
                             )
                         }
                     ScanStep.SUCCESS -> SuccessPane(
@@ -150,13 +156,13 @@ private fun ScanInputPane(
             WarrantyPrimaryButton(
                 text = "Take Photo",
                 onClick = onCamera,
-                icon = { Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                icon = Icons.Default.PhotoCamera,
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             )
             WarrantyGhostButton(
                 text = "Choose Existing Image",
                 onClick = onPick,
-                icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                icon = Icons.Default.PhotoLibrary,
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             )
         }
@@ -181,12 +187,14 @@ private fun ScanInputPane(
 @Composable
 private fun ReviewPane(
     draft: ReviewDraft,
+    state: ScanUiState,
     isSaving: Boolean,
     onEdit: (String, String) -> Unit,
     onDateEdit: (String, Long?) -> Unit,
     onConfirm: () -> Unit,
     onCancel: () -> Unit,
-    onRescan: () -> Unit
+    onReparse: () -> Unit,
+    onRetake: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
     Column(
@@ -199,10 +207,15 @@ private fun ReviewPane(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Review Detected Details", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Spacer(Modifier.weight(1f))
-            IconButton(onClick = onRescan) {
-                Icon(Icons.Default.Replay, contentDescription = "Re-parse text")
+            IconButton(onClick = onReparse) {
+                Icon(Icons.Default.Replay, contentDescription = "Re-parse the captured text")
             }
         }
+        Text(
+            "The icon above re-reads the captured text. To scan a different document, cancel and take a new photo.",
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         if (draft.result.warnings.isNotEmpty()) {
             Card(
@@ -229,18 +242,18 @@ private fun ReviewPane(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ReviewTextField("Product Name", draft.productName, draft, "productName", onEdit, required = true)
-                ReviewTextField("Brand", draft.brand, draft, "brand", onEdit)
-                ReviewTextField("Model", draft.model, draft, "model", onEdit)
-                ReviewTextField("Serial Number", draft.serialNumber, draft, "serialNumber", onEdit)
-                ReviewTextField("IMEI", draft.imei, draft, "imei", onEdit)
-                ReviewTextField("Store", draft.purchaseStore, draft, "purchaseStore", onEdit)
+                ReviewTextField("Product Name", draft.productName, draft, "productName", onEdit, state.validationErrors["productName"], required = true)
+                ReviewTextField("Brand", draft.brand, draft, "brand", onEdit, state.validationErrors["brand"])
+                ReviewTextField("Model", draft.model, draft, "model", onEdit, state.validationErrors["model"])
+                ReviewTextField("Serial Number", draft.serialNumber, draft, "serialNumber", onEdit, state.validationErrors["serialNumber"])
+                ReviewTextField("IMEI", draft.imei, draft, "imei", onEdit, state.validationErrors["imei"])
+                ReviewTextField("Store", draft.purchaseStore, draft, "purchaseStore", onEdit, state.validationErrors["purchaseStore"])
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.weight(1.4f)) {
-                        ReviewTextField("Price", draft.priceText, draft, "priceText", onEdit)
+                        ReviewTextField("Price", draft.priceText, draft, "priceText", onEdit, state.validationErrors["priceText"])
                     }
                     Box(Modifier.weight(1f)) {
-                        ReviewTextField("Currency", draft.currency, draft, "currency", onEdit)
+                        ReviewTextField("Currency", draft.currency, draft, "currency", onEdit, state.validationErrors["currency"])
                     }
                 }
             }
@@ -252,11 +265,11 @@ private fun ReviewPane(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ReviewDateField("Purchase Date", draft.purchaseDate, draft, "purchaseDate", dateFormat, onDateEdit)
-                ReviewDateField("Warranty Expiry", draft.warrantyExpiryDate, draft, "warrantyExpiryDate", dateFormat, onDateEdit)
-                ReviewTextField("Warranty (months)", draft.warrantyMonthsText, draft, "warrantyMonthsText", onEdit)
-                ReviewTextField("Warranty Provider", draft.warrantyProvider, draft, "warrantyProvider", onEdit)
-                ReviewTextField("Warranty Type", draft.warrantyType, draft, "warrantyType", onEdit)
+                ReviewDateField("Purchase Date", draft.purchaseDate, draft, "purchaseDate", dateFormat, onDateEdit, state.validationErrors["purchaseDate"])
+                ReviewDateField("Warranty Expiry", draft.warrantyExpiryDate, draft, "warrantyExpiryDate", dateFormat, onDateEdit, state.validationErrors["warrantyExpiryDate"])
+                ReviewTextField("Warranty (months)", draft.warrantyMonthsText, draft, "warrantyMonthsText", onEdit, state.validationErrors["warrantyMonthsText"])
+                ReviewTextField("Warranty Provider", draft.warrantyProvider, draft, "warrantyProvider", onEdit, state.validationErrors["warrantyProvider"])
+                ReviewTextField("Warranty Type", draft.warrantyType, draft, "warrantyType", onEdit, state.validationErrors["warrantyType"])
             }
         }
 
@@ -280,6 +293,7 @@ private fun ReviewTextField(
     draft: ReviewDraft,
     field: String,
     onEdit: (String, String) -> Unit,
+    errorText: String?,
     required: Boolean = false
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -303,8 +317,12 @@ private fun ReviewTextField(
             onValueChange = { onEdit(field, it) },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            isError = errorText != null,
             shape = RoundedCornerShape(RadiusMD)
         )
+        AnimatedVisibility(visible = errorText != null) {
+            Text(errorText.orEmpty(), fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+        }
     }
 }
 
@@ -315,7 +333,8 @@ private fun ReviewDateField(
     draft: ReviewDraft,
     field: String,
     dateFormat: SimpleDateFormat,
-    onDateEdit: (String, Long?) -> Unit
+    onDateEdit: (String, Long?) -> Unit,
+    errorText: String?
 ) {
     var showPicker by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -334,6 +353,7 @@ private fun ReviewDateField(
             onValueChange = {},
             readOnly = true,
             singleLine = true,
+            isError = errorText != null,
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { showPicker = true },
@@ -351,11 +371,12 @@ private fun ReviewDateField(
                 }
             }
         )
+        AnimatedVisibility(visible = errorText != null) {
+            Text(errorText.orEmpty(), fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+        }
     }
     if (showPicker) {
         val initialMillis = value ?: System.currentTimeMillis()
-        val initialDate = java.time.Instant.ofEpochMilli(initialMillis)
-            .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         val pickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
         DatePickerDialog(
             onDismissRequest = { showPicker = false },
@@ -381,12 +402,18 @@ private fun SuccessPane(message: String, onDone: () -> Unit, onScanAnother: () -
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically)
     ) {
-        Icon(
-            Icons.Default.CheckCircle,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(72.dp)
-        )
+        // Gentle success transition: scale + fade in.
+        AnimatedVisibility(
+            visible = true,
+            enter = scaleIn(initialScale = 0.6f, animationSpec = tween(280)) + fadeIn(animationSpec = tween(280))
+        ) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(72.dp)
+            )
+        }
         Text("Done!", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(message, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
         WarrantyPrimaryButton(text = "View Products", onClick = onDone, modifier = Modifier.fillMaxWidth())
@@ -412,11 +439,11 @@ private fun MatchDialog(
                         Column(Modifier.padding(12.dp)) {
                             Text(m.product.productName, fontWeight = FontWeight.Bold)
                             Text(
-                                listOfNotNull(m.product.brand, m.product.model, m.product.serialNumber).joinToString(" · "),
+                                listOfNotNull(m.product.brand, m.product.model, m.product.serialNumber, m.product.imei).joinToString(" · "),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text("Match: ${m.matchType.replace('_', ' ')}", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                            Text(m.reason, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -424,13 +451,15 @@ private fun MatchDialog(
         },
         confirmButton = {
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = { candidates.firstOrNull()?.let { onUseExisting(it.product.id) } }) { Text("Use existing") }
-                TextButton(onClick = { candidates.firstOrNull()?.let { onUpdateExisting(it.product.id) } }) { Text("Update existing (fill blanks)") }
+                TextButton(onClick = { candidates.firstOrNull()?.let { onUseExisting(it.product.id) } }) {
+                    Text("Use existing (attach only)")
+                }
+                TextButton(onClick = { candidates.firstOrNull()?.let { onUpdateExisting(it.product.id) } }) {
+                    Text("Update existing (apply edited fields)")
+                }
                 TextButton(onClick = onCreateNew) { Text("Create new product") }
                 TextButton(onClick = onCancel) { Text("Cancel") }
             }
         }
     )
 }
-
-

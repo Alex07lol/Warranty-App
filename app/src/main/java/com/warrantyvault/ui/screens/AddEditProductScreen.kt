@@ -45,6 +45,7 @@ fun AddEditProductScreen(
     var model by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("") }
     var serialNumber by remember { mutableStateOf("") }
+    var imei by remember { mutableStateOf("") }
     var store by remember { mutableStateOf("") }
     var priceStr by remember { mutableStateOf("") }
     var currency by remember { mutableStateOf("USD") }
@@ -63,6 +64,7 @@ fun AddEditProductScreen(
     var loaded by remember { mutableStateOf(productId == null) }
     var existingProduct by remember { mutableStateOf<Product?>(null) }
     var duplicateOf by remember { mutableStateOf<Product?>(null) }
+    var duplicateImeiOf by remember { mutableStateOf<Product?>(null) }
 
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
 
@@ -77,6 +79,7 @@ fun AddEditProductScreen(
                     model = p.model ?: ""
                     category = p.category ?: ""
                     serialNumber = p.serialNumber ?: ""
+                    imei = p.imei ?: ""
                     store = p.purchaseStore ?: ""
                     priceStr = p.purchasePrice?.toString() ?: ""
                     currency = p.currency
@@ -165,6 +168,12 @@ fun AddEditProductScreen(
                         onValueChange = { serialNumber = it },
                         label = "Serial Number",
                         placeholder = "Optional"
+                    )
+                    WarrantyFormField(
+                        value = imei,
+                        onValueChange = { v -> imei = v.filter { it.isDigit() || it == ' ' }.take(17) },
+                        label = "IMEI",
+                        placeholder = "Optional — 15 digits for phones"
                     )
                 }
             }
@@ -300,6 +309,21 @@ fun AddEditProductScreen(
                         errorMessage = "Warranty period must be between 1 and 240 months."
                         return@WarrantyPrimaryButton
                     }
+                    if (priceStr.isNotBlank() && priceStr.toDoubleOrNull() == null) {
+                        errorMessage = "Price must be a number."
+                        return@WarrantyPrimaryButton
+                    }
+                    val imeiDigits = imei.filter { it.isDigit() }
+                    if (imeiDigits.isNotEmpty() && imeiDigits.length !in 14..16) {
+                        errorMessage = "IMEI should be 14–16 digits."
+                        return@WarrantyPrimaryButton
+                    }
+                    val currentPurchase = purchaseDate
+                    val currentExpiry = warrantyExpiry
+                    if (currentPurchase != null && currentExpiry != null && expiryExplicitlyEdited.value && currentExpiry < currentPurchase) {
+                        errorMessage = "Warranty expiry is before the purchase date."
+                        return@WarrantyPrimaryButton
+                    }
                     errorMessage = ""
                     val pd = purchaseDate
                     val expiry = computeExpiry()
@@ -309,6 +333,7 @@ fun AddEditProductScreen(
                         model = model.trim().ifBlank { null },
                         category = category.trim().ifBlank { null },
                         serialNumber = serialNumber.trim().ifBlank { null },
+                        imei = imeiDigits.ifBlank { null },
                         purchaseStore = store.trim().ifBlank { null },
                         purchasePrice = priceStr.toDoubleOrNull(),
                         currency = currency.ifBlank { "USD" },
@@ -331,6 +356,7 @@ fun AddEditProductScreen(
                         when (result) {
                             is SaveResult.OK -> onBackClick()
                             is SaveResult.DuplicateSerial -> duplicateOf = result.existing
+                            is SaveResult.DuplicateImei -> duplicateImeiOf = result.existing
                             is SaveResult.Error -> errorMessage = result.message
                         }
                     }
@@ -362,6 +388,29 @@ fun AddEditProductScreen(
             }
         )
     }
+
+    duplicateImeiOf?.let { dup ->
+        AlertDialog(
+            onDismissRequest = { duplicateImeiOf = null },
+            title = { Text("Duplicate IMEI") },
+            text = {
+                Text(
+                    "A product with this IMEI already exists:\n\n${dup.productName}" +
+                        (dup.brand?.let { "\n$it" } ?: "") +
+                        "\n\nClear the IMEI to save anyway, or go back and edit."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    imei = ""
+                    duplicateImeiOf = null
+                }) { Text("Clear IMEI & save") }
+            },
+            dismissButton = {
+                TextButton(onClick = { duplicateImeiOf = null }) { Text("Back to edit") }
+            }
+        )
+    }
 }
 
 /** Snapshot of the form at save time. */
@@ -371,6 +420,7 @@ private data class ProductFormSnapshot(
     val model: String?,
     val category: String?,
     val serialNumber: String?,
+    val imei: String?,
     val purchaseStore: String?,
     val purchasePrice: Double?,
     val currency: String,
@@ -386,6 +436,7 @@ private data class ProductFormSnapshot(
 private sealed interface SaveResult {
     data object OK : SaveResult
     data class DuplicateSerial(val existing: Product) : SaveResult
+    data class DuplicateImei(val existing: Product) : SaveResult
     data class Error(val message: String) : SaveResult
 }
 
@@ -394,9 +445,16 @@ private suspend fun insertNew(
     userId: Long,
     s: ProductFormSnapshot
 ): SaveResult {
+    // Normalized lookups so "sn-1" vs "SN-1 " can't dodge the pre-check and die on the
+    // unique constraint with a misleading generic error.
     s.serialNumber?.let { serial ->
-        productDao.getProductBySerialNumber(userId, serial)?.let {
+        productDao.findByNormalizedSerial(userId, serial)?.let {
             return SaveResult.DuplicateSerial(it)
+        }
+    }
+    s.imei?.let { imei ->
+        productDao.findByNormalizedImei(userId, imei)?.let {
+            return SaveResult.DuplicateImei(it)
         }
     }
     return try {
@@ -408,6 +466,7 @@ private suspend fun insertNew(
                 model = s.model,
                 category = s.category,
                 serialNumber = s.serialNumber,
+                imei = s.imei,
                 purchaseStore = s.purchaseStore,
                 purchasePrice = s.purchasePrice,
                 currency = s.currency,
@@ -421,6 +480,15 @@ private suspend fun insertNew(
             )
         )
         SaveResult.OK
+    } catch (e: android.database.sqlite.SQLiteConstraintException) {
+        // Raced duplicate: the unique index is the final authority.
+        s.serialNumber?.let { serial ->
+            productDao.findByNormalizedSerial(userId, serial)?.let { return SaveResult.DuplicateSerial(it) }
+        }
+        s.imei?.let { imei ->
+            productDao.findByNormalizedImei(userId, imei)?.let { return SaveResult.DuplicateImei(it) }
+        }
+        SaveResult.Error("A product with this serial or IMEI already exists.")
     } catch (e: Exception) {
         SaveResult.Error(e.message ?: "Could not save the product.")
     }
@@ -436,8 +504,15 @@ private suspend fun updateExisting(
         ?: return SaveResult.Error("Product no longer exists.")
     s.serialNumber?.let { serial ->
         if (!serial.equals(original.serialNumber, ignoreCase = true)) {
-            productDao.getProductBySerialNumber(userId, serial)?.let {
+            productDao.findByNormalizedSerial(userId, serial)?.let {
                 if (it.id != original.id) return SaveResult.DuplicateSerial(it)
+            }
+        }
+    }
+    s.imei?.let { imei ->
+        if (!imei.equals(original.imei, ignoreCase = true)) {
+            productDao.findByNormalizedImei(userId, imei)?.let {
+                if (it.id != original.id) return SaveResult.DuplicateImei(it)
             }
         }
     }
@@ -449,6 +524,7 @@ private suspend fun updateExisting(
         model = s.model,
         category = s.category,
         serialNumber = s.serialNumber,
+        imei = s.imei,
         purchaseStore = s.purchaseStore,
         purchasePrice = s.purchasePrice,
         currency = s.currency,
@@ -464,6 +540,9 @@ private suspend fun updateExisting(
     return try {
         val rows = productDao.updateProduct(updated)
         if (rows > 0) SaveResult.OK else SaveResult.Error("Product no longer exists.")
+    } catch (e: android.database.sqlite.SQLiteConstraintException) {
+        // Raced duplicate on the unique index.
+        SaveResult.Error("Another product already uses this serial number or IMEI.")
     } catch (e: Exception) {
         SaveResult.Error(e.message ?: "Could not update the product.")
     }
