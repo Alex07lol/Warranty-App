@@ -1,0 +1,27 @@
+# Android
+*.apk
+*.ap_
+*.aab
+*.aas
+*.dex
+*.class
+
+# Build
+build/
+.gradle/
+/local.properties
+/out/
+/captures/
+
+# IDE
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Gradle wrapper
+gradle-wrapper.jar
