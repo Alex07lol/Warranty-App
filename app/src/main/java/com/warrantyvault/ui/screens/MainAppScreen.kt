@@ -1,12 +1,6 @@
 package com.warrantyvault.ui.screens
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Description
@@ -25,6 +19,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.warrantyvault.ui.components.NavItem
+import com.warrantyvault.ui.components.NavItems
+import com.warrantyvault.ui.components.WarrantyBottomNav
 
 sealed class Screen(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
     object Dashboard : Screen("dashboard", "Dashboard", Icons.Default.Dashboard)
@@ -48,26 +45,24 @@ fun MainAppScreen() {
         Screen.Settings
     )
 
+    val selectedIndex = items.indexOfFirst { currentDestination?.route?.startsWith(it.route) == true }.takeIf { it >= 0 } ?: 0
+
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                items.forEach { screen ->
-                    NavigationBarItem(
-                        icon = { androidx.compose.material3.Icon(screen.icon, contentDescription = screen.title) },
-                        label = { androidx.compose.material3.Text(screen.title) },
-                        selected = currentDestination?.route?.startsWith(screen.route) == true,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
+            WarrantyBottomNav(
+                items = NavItems,
+                selectedIndex = if (selectedIndex >= 0) selectedIndex else 0,
+                onItemClick = { index ->
+                    val screen = items[index]
+                    navController.navigate(screen.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
                         }
-                    )
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
-            }
+            )
         }
     ) { innerPadding ->
         NavHost(

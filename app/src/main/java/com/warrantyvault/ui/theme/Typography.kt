@@ -7,10 +7,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 // Inter / system font family
-val FontFamilyDefault = FontFamily.Default
+val FontFamilyDefault = FontFamily.SansSerif
 val FontFamilyMono = FontFamily.Monospace
 
-// Type scale - standard Material3 Typography
+// Type scale - aligned with web WarrantyVault typography
 val WarrantyVaultTypography = Typography(
     // Display styles
     displayLarge = TextStyle(
@@ -18,7 +18,7 @@ val WarrantyVaultTypography = Typography(
         fontWeight = FontWeight.ExtraBold,
         fontSize = 57.sp,
         lineHeight = 64.sp,
-        letterSpacing = -0.25.sp
+        letterSpacing = (-0.25).sp
     ),
     displayMedium = TextStyle(
         fontFamily = FontFamilyDefault,

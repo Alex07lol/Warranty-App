@@ -1,6 +1,5 @@
 package com.warrantyvault.ui.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -8,7 +7,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CalendarToday
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -18,6 +16,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Product
+import com.warrantyvault.ui.components.*
+import com.warrantyvault.ui.theme.RadiusLG
+import com.warrantyvault.ui.theme.RadiusMD
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,154 +94,141 @@ fun AddEditProductScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Basic Info Section
+            WarrantySectionHeader(title = "Product Information")
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(RadiusLG),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Basic Information", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Divider()
+                    WarrantyFormField(
+                        value = productName,
+                        onValueChange = { productName = it },
+                        label = "Product Name *",
+                        placeholder = "e.g., MacBook Pro 14"
+                    )
 
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = productName,
-                            onValueChange = { productName = it },
-                            label = { Text("Product Name *") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    WarrantyFormField(
+                        value = brand,
+                        onValueChange = { brand = it },
+                        label = "Brand",
+                        placeholder = "e.g., Apple"
+                    )
 
-                        OutlinedTextField(
-                            value = brand,
-                            onValueChange = { brand = it },
-                            label = { Text("Brand") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    WarrantyFormField(
+                        value = model,
+                        onValueChange = { model = it },
+                        label = "Model",
+                        placeholder = "e.g., M3 Pro"
+                    )
 
-                        OutlinedTextField(
-                            value = model,
-                            onValueChange = { model = it },
-                            label = { Text("Model") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    WarrantyFormField(
+                        value = category,
+                        onValueChange = { category = it },
+                        label = "Category",
+                        placeholder = "e.g., Laptop, Smartphone, Appliance"
+                    )
 
-                        OutlinedTextField(
-                            value = category,
-                            onValueChange = { category = it },
-                            label = { Text("Category (e.g. Laptop, Smartphone, Appliance)") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        OutlinedTextField(
-                            value = serialNumber,
-                            onValueChange = { serialNumber = it },
-                            label = { Text("Serial Number") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    WarrantyFormField(
+                        value = serialNumber,
+                        onValueChange = { serialNumber = it },
+                        label = "Serial Number",
+                        placeholder = "Optional"
+                    )
                 }
             }
 
             // Purchase Info Section
+            WarrantySectionHeader(title = "Purchase Details")
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(RadiusLG),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Purchase Details", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Divider()
+                    WarrantyFormField(
+                        value = store,
+                        onValueChange = { store = it },
+                        label = "Purchase Store",
+                        placeholder = "e.g., Apple Store"
+                    )
 
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = store,
-                            onValueChange = { store = it },
-                            label = { Text("Purchase Store") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    WarrantyFormField(
+                        value = priceStr,
+                        onValueChange = { priceStr = it },
+                        label = "Purchase Price",
+                        placeholder = "e.g., 1999.99"
+                    )
 
-                        OutlinedTextField(
-                            value = priceStr,
-                            onValueChange = { priceStr = it },
-                            label = { Text("Purchase Price") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        OutlinedTextField(
-                            value = warrantyMonths,
-                            onValueChange = { warrantyMonths = it },
-                            label = { Text("Warranty Period (months)") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    WarrantyFormField(
+                        value = warrantyMonths,
+                        onValueChange = { warrantyMonths = it },
+                        label = "Warranty Period (months)",
+                        placeholder = "12"
+                    )
                 }
             }
 
             // Warranty Provider Section
+            WarrantySectionHeader(title = "Warranty Provider (Optional)")
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(RadiusLG),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Warranty Provider (Optional)", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Divider()
+                    WarrantyFormField(
+                        value = warrantyType,
+                        onValueChange = { warrantyType = it },
+                        label = "Type",
+                        placeholder = "Manufacturer, Extended, Retailer, etc."
+                    )
 
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = warrantyType,
-                            onValueChange = { warrantyType = it },
-                            label = { Text("Type (Manufacturer, Extended, Retailer, etc.)") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                    WarrantyFormField(
+                        value = warrantyProvider,
+                        onValueChange = { warrantyProvider = it },
+                        label = "Provider Name",
+                        placeholder = "e.g., AppleCare+"
+                    )
 
-                        OutlinedTextField(
-                            value = warrantyProvider,
-                            onValueChange = { warrantyProvider = it },
-                            label = { Text("Provider Name") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        OutlinedTextField(
-                            value = warrantyContact,
-                            onValueChange = { warrantyContact = it },
-                            label = { Text("Support Contact (Phone/Email)") },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
+                    WarrantyFormField(
+                        value = warrantyContact,
+                        onValueChange = { warrantyContact = it },
+                        label = "Support Contact",
+                        placeholder = "Phone / Email / Website"
+                    )
                 }
             }
 
             // Notes Section
+            WarrantySectionHeader(title = "Notes")
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(RadiusLG),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Text("Notes", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                    Divider()
-
-                    OutlinedTextField(
+                    WarrantyFormField(
                         value = notes,
                         onValueChange = { notes = it },
-                        label = { Text("Additional Notes") },
-                        modifier = Modifier.fillMaxWidth(),
+                        label = "Additional Notes",
+                        placeholder = "Any additional information...",
                         minLines = 3,
-                        singleLine = false
+                        maxLines = 5
                     )
                 }
             }
 
             if (errorMessage.isNotBlank()) {
-                Text(text = errorMessage, color = MaterialTheme.colorScheme.error)
+                Text(text = errorMessage, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
 
-            Button(
+            WarrantyPrimaryButton(
+                text = if (productId == null) "Save Product" else "Update Product",
                 onClick = {
                     if (productName.isBlank()) {
                         errorMessage = "Product name is required."
-                        return@Button
+                        return@WarrantyPrimaryButton
                     }
                     scope.launch(Dispatchers.IO) {
                         val now = System.currentTimeMillis()
@@ -296,15 +284,8 @@ fun AddEditProductScreen(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                )
-            ) {
-                Text(if (productId == null) "Save Product" else "Update Product", fontWeight = FontWeight.Medium, fontSize = 16.sp)
-            }
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

@@ -7,7 +7,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +20,10 @@ import com.warrantyvault.WarrantyEngine
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Product
 import com.warrantyvault.ui.theme.*
+import com.warrantyvault.ui.theme.CanvasDark
+import com.warrantyvault.ui.theme.statusColor
+import com.warrantyvault.ui.theme.statusSoftColor
+import com.warrantyvault.ui.components.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -88,75 +91,90 @@ fun ProductDetailScreen(
         } else {
             val p = product!!
             val info = WarrantyEngine.warrantyStatusOf(p.purchaseDate, p.warrantyExpiryDate)
-            val badgeColor = when (info.status) {
-                "active" -> Color(0xFF10B981)
-                "expiring_soon" -> Color(0xFFF59E0B)
-                "expired" -> Color(0xFFEF4444)
-                else -> Color.Gray
-            }
+            val isDark = MaterialTheme.colorScheme.background == CanvasDark
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = p.productName, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                                Surface(
-                                    color = badgeColor.copy(alpha = 0.15f),
-                                    shape = RoundedCornerShape(16.dp)
+            WarrantyBackground(modifier = Modifier.padding(padding)) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = info.label,
-                                        color = badgeColor,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Text(text = p.productName, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurface)
+                                    WarrantyStatusBadge(status = info.status, label = info.label)
                                 }
-                            }
 
-                            val brandModel = listOfNotNull(p.brand, p.model).joinToString(" · ")
-                            if (brandModel.isNotEmpty()) {
-                                Text(text = brandModel, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val brandModel = listOfNotNull(p.brand, p.model).joinToString(" · ")
+                                if (brandModel.isNotEmpty()) {
+                                    Text(text = brandModel, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                             }
                         }
                     }
-                }
 
-                item {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("Specifications & Details", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                DetailRow("Category", p.category)
-                                DetailRow("Serial Number", p.serialNumber)
-                                DetailRow("Purchase Date", p.purchaseDate?.let { dateFormat.format(Date(it)) })
-                                DetailRow("Purchase Price", p.purchasePrice?.let { "${p.currency} $it" })
-                                DetailRow("Store", p.purchaseStore)
+                    item {
+                        WarrantySectionHeader(title = "Warranty Status")
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                DetailRow("Status", info.label, statusColor(info.status, isDark))
+                                DetailRow("Days Remaining", info.daysRemaining?.toString() ?: "Unknown")
                                 DetailRow("Warranty Period", p.warrantyPeriodMonths?.let { "$it months" })
                                 DetailRow("Warranty Expiry", p.warrantyExpiryDate?.let { dateFormat.format(Date(it)) })
-                                DetailRow("Lifecycle Status", p.lifecycleStatus.replaceFirstChar { it.uppercase() })
                                 DetailRow("Warranty Provider", p.warrantyProvider)
                                 DetailRow("Warranty Type", p.warrantyProviderType)
                                 DetailRow("Support Contact", p.warrantyContact)
                                 DetailRow("Website", p.warrantyWebsite)
+                            }
+                        }
+                    }
+
+                    item {
+                        WarrantySectionHeader(title = "Purchase Information")
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                DetailRow("Purchase Date", p.purchaseDate?.let { dateFormat.format(Date(it)) })
+                                DetailRow("Purchase Price", p.purchasePrice?.let { "${p.currency} $it" })
+                                DetailRow("Store", p.purchaseStore)
+                            }
+                        }
+                    }
+
+                    item {
+                        WarrantySectionHeader(title = "Product Identifiers")
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                DetailRow("Category", p.category)
+                                DetailRow("Serial Number", p.serialNumber)
+                                DetailRow("Lifecycle Status", p.lifecycleStatus.replaceFirstChar { it.uppercase() })
+                            }
+                        }
+                    }
+
+                    item {
+                        WarrantySectionHeader(title = "Notes")
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 DetailRow("Notes", p.notes)
                             }
                         }
@@ -168,14 +186,19 @@ fun ProductDetailScreen(
 }
 
 @Composable
-fun DetailRow(label: String, value: String?) {
+fun DetailRow(label: String, value: String?, statusColor: Color? = null) {
     if (!value.isNullOrBlank()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(text = label, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-            Text(text = value, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                text = value,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                color = statusColor ?: MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }

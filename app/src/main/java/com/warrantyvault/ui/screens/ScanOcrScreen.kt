@@ -3,7 +3,6 @@ package com.warrantyvault.ui.screens
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
@@ -20,6 +19,7 @@ import com.warrantyvault.data.Document
 import com.warrantyvault.ocr.AndroidOcrEngine
 import com.warrantyvault.ocr.OcrResult
 import com.warrantyvault.ui.theme.*
+import com.warrantyvault.ui.components.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -79,79 +79,72 @@ fun ScanOcrScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(title = { Text("Scan OCR") })
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "OCR",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onBackground,
-                fontWeight = FontWeight.Light
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = scanStatus,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 24.dp)
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            if (isProcessing) {
-                CircularProgressIndicator()
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("Extracting text and parsing warranty details...")
-            } else {
-                Button(
-                    onClick = { pickImage.launch("image/*") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Capture & Run ML Kit OCR", color = MaterialTheme.colorScheme.onPrimary)
-                    }
-                }
-            }
-
-            extractedData?.let { result ->
+        WarrantyBackground(modifier = Modifier.padding(padding)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
                 Spacer(modifier = Modifier.height(32.dp))
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                ) {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Extracted Data", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            result.productName?.let { DetailRow("Product", it) }
-                            result.brand?.let { DetailRow("Brand", it) }
-                            result.model?.let { DetailRow("Model", it) }
-                            result.serialNumber?.let { DetailRow("Serial", it) }
-                            result.purchasePrice?.let { DetailRow("Price", it.toString()) }
-                            result.purchaseStore?.let { DetailRow("Store", it) }
-                            result.purchaseDate?.let { DetailRow("Date", it) }
-                            result.warrantyExpiryDate?.let { DetailRow("Warranty Expiry", it) }
+
+                Text(
+                    text = "Scan Document",
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = scanStatus,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (isProcessing) {
+                    CircularProgressIndicator(modifier = Modifier.size(48.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Extracting text and parsing warranty details...", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    WarrantyPrimaryButton(
+                        text = "Capture & Run ML Kit OCR",
+                        onClick = { pickImage.launch("image/*") },
+                        icon = { Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp)
+                    )
+                }
+
+                extractedData?.let { result ->
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(RadiusLG),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("Extracted Data", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, letterSpacing = 0.12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                result.productName?.let { DetailRow("Product", it) }
+                                result.brand?.let { DetailRow("Brand", it) }
+                                result.model?.let { DetailRow("Model", it) }
+                                result.serialNumber?.let { DetailRow("Serial", it) }
+                                result.purchasePrice?.let { DetailRow("Price", it.toString()) }
+                                result.purchaseStore?.let { DetailRow("Store", it) }
+                                result.purchaseDate?.let { DetailRow("Date", it) }
+                                result.warrantyExpiryDate?.let { DetailRow("Warranty Expiry", it) }
+                            }
                         }
                     }
                 }
