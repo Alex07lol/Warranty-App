@@ -63,15 +63,13 @@ fun ProductDetailScreen(
         }
     }
 
-    Scaffold { padding ->
+    WarrantyBackground {
         product?.let { p ->
             val info = WarrantyEngine.warrantyStatusOf(p.purchaseDate, p.warrantyExpiryDate)
 
             Column(
                 Modifier
                     .fillMaxSize()
-                    .padding(padding)
-                    .background(wv.background)
             ) {
                 // Header: back, title, edit, delete
                 Row(
@@ -86,6 +84,7 @@ fun ProductDetailScreen(
                     Text(
                         p.productName,
                         style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
                         color = wv.textPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -107,7 +106,7 @@ fun ProductDetailScreen(
                     selectedTabIndex = selectedTab,
                     containerColor = androidx.compose.ui.graphics.Color.Transparent,
                     contentColor = wv.primary,
-                    divider = {}
+                    divider = { HorizontalDivider(color = wv.borderSubtle) }
                 ) {
                     tabs.forEachIndexed { i, title ->
                         Tab(
@@ -150,7 +149,7 @@ fun ProductDetailScreen(
                 )
             }
         } ?: run {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = wv.primary)
             }
         }
@@ -164,51 +163,77 @@ private fun OverviewTab(p: Product, info: com.warrantyvault.WarrantyInfo) {
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(WvDimens.ScreenGutter),
+        contentPadding = PaddingValues(start = WvDimens.ScreenGutter, end = WvDimens.ScreenGutter, top = WvDimens.Space3, bottom = 100.dp),
         verticalArrangement = Arrangement.spacedBy(WvDimens.Space4)
     ) {
         // ---- Hero card ----
         item {
             Surface(
                 shape = RoundedCornerShape(WvDimens.RadiusLarge),
-                color = MaterialTheme.colorScheme.surface,
+                color = androidx.compose.ui.graphics.Color.Transparent,
                 border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle)
             ) {
-                Column(Modifier.padding(WvDimens.Space5), verticalArrangement = Arrangement.spacedBy(WvDimens.Space2)) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            p.productName,
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = wv.textPrimary,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                        StatusBadge(status = info.status, label = info.label)
-                    }
-                    listOfNotNull(p.brand, p.model).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
-                        Text(it, style = MaterialTheme.typography.bodyMedium, color = wv.textSecondary)
-                    }
-                    // Days remaining + progress
-                    info.daysRemaining?.let { days ->
-                        val total = p.warrantyPeriodMonths?.let { m -> m * 30.44 }?.toInt()
-                        val progress = if (total != null && total > 0) {
-                            (total - days).coerceIn(0, total) / total.toFloat()
-                        } else null
-                        Spacer(Modifier.height(WvDimens.Space1))
-                        LinearProgressIndicator(
-                            progress = { (1f - (progress ?: 0f)).coerceIn(0f, 1f) },
-                            color = statusColor,
-                            trackColor = wv.surfaceHighest,
-                            modifier = Modifier.fillMaxWidth().height(6.dp)
-                        )
-                    }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        KeyValue("Purchase date", p.purchaseDate?.let { detailDateFormat.format(Date(it)) } ?: "—")
-                        KeyValue("Expiry", p.warrantyExpiryDate?.let { detailDateFormat.format(Date(it)) } ?: "—")
+                Box(
+                    modifier = Modifier
+                        .background(wv.heroBrush)
+                        .padding(WvDimens.Space5)
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(WvDimens.Space2)) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                p.productName,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = wv.textPrimary,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            StatusBadge(status = info.status, label = info.label)
+                        }
+                        listOfNotNull(p.brand, p.model).joinToString(" · ").takeIf { it.isNotEmpty() }?.let {
+                            Text(it, style = MaterialTheme.typography.bodyMedium, color = wv.textSecondary)
+                        }
+                        // Days remaining + progress
+                        info.daysRemaining?.let { days ->
+                            val total = p.warrantyPeriodMonths?.let { m -> m * 30.44 }?.toInt()
+                            val progress = if (total != null && total > 0) {
+                                (total - days).coerceIn(0, total) / total.toFloat()
+                            } else null
+                            Spacer(Modifier.height(WvDimens.Space1))
+                            LinearProgressIndicator(
+                                progress = { (1f - (progress ?: 0f)).coerceIn(0f, 1f) },
+                                color = statusColor,
+                                trackColor = wv.surfaceHighest,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .androidx.compose.ui.draw.clip(RoundedCornerShape(WvDimens.RadiusPill))
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text("Purchase date", style = MaterialTheme.typography.labelSmall, color = wv.textMuted)
+                                Text(
+                                    p.purchaseDate?.let { detailDateFormat.format(Date(it)) } ?: "—",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = wv.textPrimary
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("Expiry", style = MaterialTheme.typography.labelSmall, color = wv.textMuted)
+                                Text(
+                                    p.warrantyExpiryDate?.let { detailDateFormat.format(Date(it)) } ?: "—",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = wv.textPrimary
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -263,7 +288,7 @@ private fun DocumentsTab(productId: Long) {
     val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
 
     if (documents.isEmpty()) {
-        Column(Modifier.padding(WvDimens.ScreenGutter)) {
+        Column(Modifier.padding(horizontal = WvDimens.ScreenGutter, vertical = WvDimens.Space3)) {
             EmptyStateCard(
                 title = "No documents yet",
                 body = "Invoices, receipts and warranty cards you scan for this product will appear here.",
@@ -272,7 +297,7 @@ private fun DocumentsTab(productId: Long) {
         }
     } else {
         LazyColumn(
-            contentPadding = PaddingValues(WvDimens.ScreenGutter),
+            contentPadding = PaddingValues(start = WvDimens.ScreenGutter, end = WvDimens.ScreenGutter, top = WvDimens.Space3, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(WvDimens.Space3)
         ) {
             items(documents.size) { i ->
@@ -295,7 +320,7 @@ private fun RepairsTab(productId: Long) {
     val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
 
     if (repairs.isEmpty()) {
-        Column(Modifier.padding(WvDimens.ScreenGutter)) {
+        Column(Modifier.padding(horizontal = WvDimens.ScreenGutter, vertical = WvDimens.Space3)) {
             EmptyStateCard(
                 title = "No repair history yet",
                 body = "Service events for this product — screen replacements, battery swaps, diagnostics — will appear here."
@@ -303,7 +328,7 @@ private fun RepairsTab(productId: Long) {
         }
     } else {
         LazyColumn(
-            contentPadding = PaddingValues(WvDimens.ScreenGutter),
+            contentPadding = PaddingValues(start = WvDimens.ScreenGutter, end = WvDimens.ScreenGutter, top = WvDimens.Space3, bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(WvDimens.Space3)
         ) {
             items(repairs.size) { i ->
@@ -335,12 +360,29 @@ private fun DocumentRow(fileName: String, addedAt: Long, verified: Boolean) {
             Spacer(Modifier.width(WvDimens.Space3))
             Column(Modifier.weight(1f)) {
                 Text(fileName, style = MaterialTheme.typography.titleSmall, color = wv.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    "Added ${detailDateFormat.format(Date(addedAt))}" + if (verified) " · ✓ reviewed" else "",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = wv.textMuted
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Added ${detailDateFormat.format(Date(addedAt))}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = wv.textMuted
+                    )
+                    if (verified) {
+                        Text(" · ", style = MaterialTheme.typography.labelSmall, color = wv.textMuted)
+                        Text(
+                            "✓ reviewed",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = wv.success
+                        )
+                    }
+                }
             }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = wv.textMuted,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -354,11 +396,12 @@ private fun RepairEventRow(event: ServiceHistory) {
         border = androidx.compose.foundation.BorderStroke(1.dp, wv.borderSubtle),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(WvDimens.Space3), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(Modifier.padding(WvDimens.Space3), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(
                     event.serviceType.replaceFirstChar { it.uppercase() },
                     style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
                     color = wv.textPrimary
                 )
                 Text(
@@ -370,15 +413,17 @@ private fun RepairEventRow(event: ServiceHistory) {
             event.description?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = wv.textSecondary)
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                event.serviceProvider?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = wv.textMuted)
-                }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    event.serviceProvider ?: "Service",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = wv.textMuted
+                )
                 event.cost?.let {
                     Text(
                         "${event.currency} ${it}",
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         color = wv.textPrimary
                     )
                 }

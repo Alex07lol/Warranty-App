@@ -69,143 +69,213 @@ fun RepairLocationsScreen() {
         }
     }
 
-    // Search bar + origin controls
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(wv.background)
-            .padding(horizontal = WvDimens.ScreenGutter)
-    ) {
-        Spacer(Modifier.height(WvDimens.Space4))
-        Text("Repair Locations", style = MaterialTheme.typography.headlineMedium, color = wv.textPrimary)
-        Text(
-            "Find a repair centre near you",
-            style = MaterialTheme.typography.bodyMedium,
-            color = wv.textSecondary
-        )
-        Spacer(Modifier.height(WvDimens.Space4))
+    var selectedLocation by remember { mutableStateOf<RepairLocation?>(null) }
 
-        OutlinedTextField(
-            value = state.searchText,
-            onValueChange = vm::updateSearchText,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search city, area or postcode", color = wv.textMuted) },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = wv.textMuted) },
-            singleLine = true,
-            shape = RoundedCornerShape(WvDimens.RadiusSmall),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = wv.primary,
-                unfocusedBorderColor = wv.border,
-                cursorColor = wv.primary,
-                focusedTextColor = wv.textPrimary,
-                unfocusedTextColor = wv.textPrimary
+    WarrantyBackground {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(horizontal = WvDimens.ScreenGutter)
+        ) {
+            Spacer(Modifier.height(8.dp))
+            Text("Repair Locations", style = MaterialTheme.typography.headlineMedium, color = wv.textPrimary)
+            Text(
+                "Find a repair centre near you",
+                style = MaterialTheme.typography.bodySmall,
+                color = wv.textSecondary
             )
-        )
-        Spacer(Modifier.height(WvDimens.Space3))
-        Row(horizontalArrangement = Arrangement.spacedBy(WvDimens.Space3)) {
-            Button(
-                onClick = { vm.searchByQuery(context) },
-                enabled = !state.isLoading,
-                shape = RoundedCornerShape(WvDimens.RadiusSmall),
-                colors = ButtonDefaults.buttonColors(containerColor = wv.primary, contentColor = wv.onPrimary),
-                modifier = Modifier.weight(1f)
-            ) { Text(if (state.isLoading) "Searching…" else "Search") }
-            OutlinedButton(
-                onClick = {
-                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-                        PackageManager.PERMISSION_GRANTED
-                    if (granted) {
-                        requestOneShotLocation(context) { lat, lon -> vm.onDeviceLocationReady(lat, lon) }
-                    } else {
-                        vm.onUseMyLocationRequested()
-                    }
-                },
-                enabled = !state.isLoading,
-                shape = RoundedCornerShape(WvDimens.RadiusSmall),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = wv.textPrimary),
+            Spacer(Modifier.height(WvDimens.Space4))
+
+            WarrantySearchBar(
+                value = state.searchText,
+                onValueChange = vm::updateSearchText,
+                placeholder = "Search city, area or postcode"
+            )
+            Spacer(Modifier.height(WvDimens.Space3))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                WarrantyPrimaryButton(
+                    text = if (state.isLoading) "Searching…" else "Search",
+                    onClick = { vm.searchByQuery(context) },
+                    enabled = !state.isLoading,
+                    modifier = Modifier.weight(1f).height(44.dp)
+                )
+                WarrantyGhostButton(
+                    text = "Use my location",
+                    onClick = {
+                        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                            PackageManager.PERMISSION_GRANTED
+                        if (granted) {
+                            requestOneShotLocation(context) { lat, lon -> vm.onDeviceLocationReady(lat, lon) }
+                        } else {
+                            vm.onUseMyLocationRequested()
+                        }
+                    },
+                    enabled = !state.isLoading,
+                    icon = Icons.Default.MyLocation,
+                    modifier = Modifier.weight(1.2f).height(44.dp)
+                )
+            }
+
+            // Rationale dialog: explain purpose before the OS permission dialog.
+            if (state.showLocationRationale) {
+                AlertDialog(
+                    onDismissRequest = { vm.dismissLocationRationale() },
+                    title = { Text("Location permission") },
+                    text = {
+                        Text(
+                            "WarrantyVault uses your location only to find repair centres near you. " +
+                                "Your warranty data, documents and identifiers are never sent anywhere."
+                        )
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            vm.dismissLocationRationale()
+                            permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                        }) { Text("Allow", color = wv.primary) }
+                    },
+                    dismissButton = { TextButton(onClick = { vm.dismissLocationRationale() }) { Text("Not now", color = wv.textSecondary) } }
+                )
+            }
+
+            state.errorMessage?.let { msg ->
+                Spacer(Modifier.height(WvDimens.Space3))
+                Surface(
+                    shape = RoundedCornerShape(WvDimens.RadiusSmall),
+                    color = wv.errorSoft,
+                    contentColor = wv.error,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(msg, Modifier.padding(WvDimens.Space3), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            Spacer(Modifier.height(WvDimens.Space4))
+
+            // Results
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(WvDimens.Space3),
+                contentPadding = PaddingValues(top = 4.dp, bottom = 100.dp),
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp), tint = wv.primary)
-                Spacer(Modifier.width(6.dp))
-                Text("Use my location")
+                if (!state.hasSearched) {
+                    item {
+                        EmptyStateCard(
+                            title = "Find repair centres",
+                            body = "Search by area or use your location to see nearby repair and service centres on OpenStreetMap.",
+                        )
+                    }
+                } else if (state.results.isEmpty() && !state.isLoading) {
+                    item {
+                        EmptyStateCard(
+                            title = "No repair centres found",
+                            body = "Try a wider search area or a different query.",
+                        )
+                    }
+                } else {
+                    item {
+                        Text(
+                            "Nearby Repair Centres" + (state.originLabel?.let { " · near $it" } ?: ""),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = wv.textPrimary
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            OverpassRepairLocationProvider.ATTRIBUTION,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = wv.textMuted
+                        )
+                    }
+                    items(state.results, key = { it.id }) { loc ->
+                        RepairLocationCard(loc) {
+                            selectedLocation = loc
+                        }
+                    }
+                }
             }
         }
 
-        // Rationale dialog: explain purpose before the OS permission dialog.
-        if (state.showLocationRationale) {
+        selectedLocation?.let { loc ->
             AlertDialog(
-                onDismissRequest = { vm.dismissLocationRationale() },
-                title = { Text("Location permission") },
+                onDismissRequest = { selectedLocation = null },
+                shape = RoundedCornerShape(WvDimens.RadiusLarge),
+                containerColor = wv.surfaceElevated,
+                title = {
+                    Column {
+                        Text(loc.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = wv.textPrimary)
+                        loc.address?.let {
+                            Text(it, style = MaterialTheme.typography.bodySmall, color = wv.textSecondary)
+                        }
+                    }
+                },
                 text = {
-                    Text(
-                        "WarrantyVault uses your location only to find repair centres near you. " +
-                            "Your warranty data, documents and identifiers are never sent anywhere."
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        loc.distanceMeters?.let {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Distance", style = MaterialTheme.typography.bodyMedium, color = wv.textMuted)
+                                Text(formatDistanceLabel(it), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = wv.textPrimary)
+                            }
+                        }
+                        loc.category?.let {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Category", style = MaterialTheme.typography.bodyMedium, color = wv.textMuted)
+                                Text(it.replaceFirstChar { c -> c.uppercase() }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = wv.textPrimary)
+                            }
+                        }
+                        loc.openingHours?.let {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Hours", style = MaterialTheme.typography.bodyMedium, color = wv.textMuted)
+                                Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = wv.textPrimary)
+                            }
+                        }
+                        loc.phone?.let {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Phone", style = MaterialTheme.typography.bodyMedium, color = wv.textMuted)
+                                Text(it, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = wv.textPrimary)
+                            }
+                        }
+                        Text("Source: OpenStreetMap", style = MaterialTheme.typography.labelSmall, color = wv.textMuted, modifier = Modifier.padding(top = 4.dp))
+                    }
                 },
                 confirmButton = {
-                    TextButton(onClick = {
-                        vm.dismissLocationRationale()
-                        permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
-                    }) { Text("Allow") }
-                },
-                dismissButton = { TextButton(onClick = { vm.dismissLocationRationale() }) { Text("Not now") } }
-            )
-        }
-
-        state.errorMessage?.let { msg ->
-            Spacer(Modifier.height(WvDimens.Space3))
-            Surface(
-                shape = RoundedCornerShape(WvDimens.RadiusSmall),
-                color = wv.errorSoft,
-                contentColor = wv.error,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(msg, Modifier.padding(WvDimens.Space3), style = MaterialTheme.typography.bodySmall)
-            }
-        }
-
-        Spacer(Modifier.height(WvDimens.Space4))
-
-        // Results
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(WvDimens.Space3),
-            modifier = Modifier.weight(1f)
-        ) {
-            if (!state.hasSearched) {
-                item {
-                    EmptyStateCard(
-                        title = "Find repair centres",
-                        body = "Search by area or use your location to see nearby repair and service centres on OpenStreetMap.",
-                    )
-                }
-            } else if (state.results.isEmpty() && !state.isLoading) {
-                item {
-                    EmptyStateCard(
-                        title = "No repair centres found",
-                        body = "Try a wider search area or a different query.",
-                    )
-                }
-            } else {
-                item {
-                    Text(
-                        "Nearby Repair Centres" + (state.originLabel?.let { " · near $it" } ?: ""),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = wv.textPrimary
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        OverpassRepairLocationProvider.ATTRIBUTION,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = wv.textMuted
-                    )
-                }
-                items(state.results, key = { it.id }) { loc ->
-                    RepairLocationCard(loc) {
-                        showLocationDetail(context, loc)
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (!loc.phone.isNullOrBlank()) {
+                                WarrantyPrimaryButton(
+                                    text = "Call",
+                                    onClick = {
+                                        context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${loc.phone}")))
+                                    },
+                                    modifier = Modifier.weight(1f).height(44.dp)
+                                )
+                            }
+                            WarrantyGhostButton(
+                                text = "Directions ↗",
+                                onClick = {
+                                    val uri = Uri.parse("geo:${loc.latitude},${loc.longitude}?q=${loc.latitude},${loc.longitude}(${Uri.encode(loc.name)})")
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+                                },
+                                modifier = Modifier.weight(1f).height(44.dp)
+                            )
+                        }
+                        TextButton(
+                            onClick = { selectedLocation = null },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Close", color = wv.textSecondary)
+                        }
                     }
                 }
-                item { Spacer(Modifier.height(WvDimens.Space6)) }
-            }
+            )
         }
     }
 }

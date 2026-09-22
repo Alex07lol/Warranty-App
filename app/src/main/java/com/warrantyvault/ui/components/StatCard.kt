@@ -92,7 +92,7 @@ fun ActiveWarrantiesStat(value: String, modifier: Modifier = Modifier, onClick: 
 @Composable
 fun ExpiringSoonStat(value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
-    WarrantyStatCard("Expiring Soon", value, "", Icons.Default.Warning, modifier, wv.warning, onClick)
+    WarrantyStatCard("Expiring", value, "", Icons.Default.Warning, modifier, wv.warning, onClick)
 }
 
 @Composable

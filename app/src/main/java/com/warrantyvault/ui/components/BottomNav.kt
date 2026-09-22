@@ -69,6 +69,7 @@ fun WarrantyBottomNav(
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .padding(horizontal = WvDimens.NavHorizontalPad, vertical = WvDimens.NavBottomPad)
     ) {
         Row(

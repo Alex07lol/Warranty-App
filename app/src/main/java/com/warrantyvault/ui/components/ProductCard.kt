@@ -115,18 +115,7 @@ fun WarrantyProductCard(
             Spacer(Modifier.width(WvDimens.Space2))
 
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(WvDimens.RadiusPill),
-                    color = statusSoft,
-                    contentColor = statusColor
-                ) {
-                    Text(
-                        text = info.label,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+                StatusBadge(status = info.status, label = info.label)
                 Icon(
                     Icons.Default.ChevronRight,
                     contentDescription = null,
