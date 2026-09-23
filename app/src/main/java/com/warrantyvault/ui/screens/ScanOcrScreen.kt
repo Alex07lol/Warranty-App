@@ -15,8 +15,10 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -43,6 +45,9 @@ import com.warrantyvault.ui.CameraCaptureActivity
 import com.warrantyvault.ui.components.*
 import com.warrantyvault.ui.theme.RadiusLG
 import com.warrantyvault.ui.theme.RadiusMD
+import com.warrantyvault.ui.theme.WvDimens
+import com.warrantyvault.ui.theme.darkWvColors
+import com.warrantyvault.ui.theme.lightWvColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

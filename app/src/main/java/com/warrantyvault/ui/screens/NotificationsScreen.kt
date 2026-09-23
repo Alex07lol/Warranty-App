@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Notification
-import com.warrantyvault.ui.components.EmptyStateCard
 import com.warrantyvault.ui.components.WarrantyBackground
 import com.warrantyvault.ui.theme.WvDimens
 import com.warrantyvault.ui.theme.darkWvColors

@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
@@ -17,6 +18,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -29,6 +31,7 @@ import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Product
 import com.warrantyvault.data.ServiceHistory
 import com.warrantyvault.ui.components.StatusBadge
+import com.warrantyvault.ui.components.WarrantyBackground
 import com.warrantyvault.ui.theme.WvDimens
 import com.warrantyvault.ui.theme.darkWvColors
 import com.warrantyvault.ui.theme.lightWvColors
@@ -210,7 +213,7 @@ private fun OverviewTab(p: Product, info: com.warrantyvault.WarrantyInfo) {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp)
-                                    .androidx.compose.ui.draw.clip(RoundedCornerShape(WvDimens.RadiusPill))
+                                    .clip(RoundedCornerShape(WvDimens.RadiusPill))
                             )
                         }
                         Spacer(Modifier.height(4.dp))
