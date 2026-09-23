@@ -14,7 +14,12 @@ object OcrParser {
     private const val DURATION_MAJOR_DAYS = 45L
 
     fun parse(rawText: String, today: LocalDate = LocalDate.now()): OcrResult {
-        val lines = rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        // OCR often returns a block of labels followed by a block of values (it reads column
+        // by column). Align those back into "LABEL : value" lines first, otherwise labelled
+        // fields like Serial Number / Purchase Date / Valid Till are invisible to extraction.
+        val lines = LabelValueAligner.align(
+            rawText.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        )
         val warnings = mutableListOf<String>()
 
         // --- Store ---
@@ -22,7 +27,7 @@ object OcrParser {
         val merchant = merchantHit?.first
 
         // --- Model / product identity (brand is resolved after the product line is known) ---
-        val modelHit = IdentifierParser.extractModel(lines)
+        var modelHit = IdentifierParser.extractModel(lines)
         val productLineHit = IdentifierParser.extractProductLine(lines)
         val labelledProduct = IdentifierParser.extractLabelledProduct(lines)
         val candidate = IdentifierParser.bestProductCandidate(lines, merchant)
@@ -45,7 +50,7 @@ object OcrParser {
 
         // Brand: dictionary hit first; if absent, infer from the recognized product line
         // ("Galaxy S24 Ultra" with no literal "Samsung" on the receipt → Samsung).
-        val brandHit: String? = IdentifierParser.extractBrand(lines, merchant, productLine)
+        val brandHit: String? = IdentifierParser.extractBrand(lines, merchant, productLine, merchantHit?.second)
 
         val productName: String? = when {
             productLine == null -> null
@@ -53,14 +58,45 @@ object OcrParser {
                 IdentifierParser.brandNearModel(brandHit, productLineHit.second) &&
                 !productLine.lowercase().contains(productLineHit.first.lowercase()) ->
                 "$brandHit $productLine"
-            else -> productLine
+            else -> IdentifierParser.withBrandPrefix(productLine, brandHit)
         }
         if (productName == null) warnings.add("No product identity detected — please enter the product name.")
         if (productConfidence <= 0.4f) warnings.add("Product name is a low-confidence guess from receipt text.")
 
         // --- Identifiers ---
-        val serialHit = IdentifierParser.extractSerial(lines)
+        var serialHit = IdentifierParser.extractSerial(lines)
         val imeiHit = IdentifierParser.extractImei(lines)
+        // On crumpled/handwritten cards the label column can mis-align with the value column
+        // ("MODEL NUMBER : call 1800…"), which poisons labelled extraction below it. When the
+        // labelled reads are incoherent or missing, recover from position: the value block
+        // sits directly ABOVE the label block, in the same order (the engine read the value
+        // column first here — the inverse of its usual label-first order).
+        fun valueBlockBefore(labels: List<String>): List<String> {
+            val li = lines.indexOfFirst { l -> labels.any { l.trim().startsWith(it, ignoreCase = true) } }
+            if (li <= 0) return emptyList()
+            // The engine placed the value column before the label block here (the inverse of
+            // its usual order). Take a bounded window above the first label, excluding the
+            // mis-aligned "LABEL : value" lines themselves.
+            val start = maxOf(0, li - 15)
+            return lines.subList(start, li).filter { l -> !l.contains(':') }
+        }
+        if (modelHit == null || serialHit == null) {
+            val block = valueBlockBefore(listOf("MODEL NUMBER", "SERIAL NUMBER", "COLOUR", "PURCHASE DATE", "INVOICE NUMBER"))
+            if (modelHit == null) {
+                // Position order: MODEL is the first value-ish line, SERIAL the second.
+                block.firstOrNull { IdentifierParser.looksLikeModelValue(it) }?.let {
+                    modelHit = it to it
+                }
+            }
+            if (serialHit == null) {
+                // The serial is a compact digit-carrying token that is not already the model.
+                block.firstOrNull {
+                    IdentifierParser.looksLikeSerialValue(it) && it != modelHit?.first
+                }?.let {
+                    serialHit = IdentifierParser.repairIdentifierLookalikes(it) to it
+                }
+            }
+        }
         if (serialHit == null && imeiHit == null) {
             warnings.add("No serial number or IMEI detected — duplicate detection will be weaker.")
         }
@@ -94,9 +130,28 @@ object OcrParser {
         // Context-aware: labelled purchase/start/expiry dates win. A bare date is used as the
         // purchase date ONLY when it is the only date on the receipt and no expiry label exists.
         val dateHits = DateParser.extractDatedLines(lines)
+        // A purchase label whose value did not line up can still be recovered from a fuzzy
+        // date ("27 / og / 2025") found near the label — review confirms the read.
+        val fuzzyPurchaseHit = fuzzyDateNearLabel(lines, setOf("purchase date", "date of purchase", "purchased on"))
+            ?.let { DateParser.DateHit(it, "purchase", "fuzzy date near purchase label", 0.5f, ambiguous = true) }
+        // The 2x capture splits label and value columns with the values FIRST, so neither the
+        // labelled nor the label-nearby route sees the date. A bare fuzzy date anywhere is
+        // still worth offering to review — flagged ambiguous, never silent.
+        val fuzzyBareHit = if (dateHits.none { it.context == "purchase" } && fuzzyPurchaseHit == null) {
+            lines.firstNotNullOfOrNull { line ->
+                LabelValueAligner.fuzzyNumericDateGroups(line)?.let { (d, m, y) ->
+                    // Reuse the tokenizer's look-alike repair ("2?"→27, "og"→08) instead of
+                    // dropping non-digit characters — "2?" must become 27, not 2.
+                    DateParser.parseNumericDetailed("$d/$m/$y")?.date
+                }?.let {
+                    DateParser.DateHit(it, "purchase", "fuzzy date in text", 0.4f, ambiguous = true)
+                }
+            }
+        } else null
         val purchaseHit = dateHits.lastOrNull { it.context == "purchase" }
-        val startHit = dateHits.lastOrNull { it.context == "start" }
+            ?: fuzzyPurchaseHit ?: fuzzyBareHit
         val expiryHit = dateHits.lastOrNull { it.context == "expiry" }
+        val startHit = dateHits.lastOrNull { it.context == "start" }
         val unlabelledHits = dateHits.filter { it.context == null }
 
         val purchaseHitFinal = purchaseHit
@@ -191,6 +246,51 @@ object OcrParser {
             warrantyType = OcrFieldValue(null, 0f, null),
             warnings = warnings
         )
+    }
+
+    /**
+     * Finds a fuzzy numeric date (handwriting-mangled month, e.g. "27 / og / 2025") within a
+     * few lines after a label line. Only used when no cleanly-parsed date carried that label.
+     */
+    private fun fuzzyDateNearLabel(lines: List<String>, labels: Set<String>): LocalDate? {
+        for ((i, line) in lines.withIndex()) {
+            val lower = line.lowercase()
+            if (labels.none { lower.contains(it) }) continue
+            // The fuzzy date is either on the same line ("PURCHASE DATE : 27 / og / 2025")
+            // or one of the next three (value block split).
+            for (j in i..minOf(lines.lastIndex, i + 3)) {
+                // On the same line, look after the label colon; on later lines, the whole line.
+                val scope = if (j == i) line.substringAfter(':', line) else lines[j]
+                val groups = LabelValueAligner.fuzzyNumericDateGroups(scope) ?: continue
+                val (d, m, y) = groups
+                val day = d.filter { it.isDigit() }.toIntOrNull() ?: continue
+                var year = y.toIntOrNull() ?: continue
+                if (year < 100) year += if (year <= 69) 2000 else 1900
+                val month = fuzzyMonth(m) ?: continue
+                return try { LocalDate.of(year, month, day) } catch (e: Exception) { null }
+            }
+        }
+        return null
+    }
+
+    /** Maps a mangled month token ("og", "o8", "08") to 1..12 using OCR digit look-alikes. */
+    private fun fuzzyMonth(raw: String): Int? {
+        val digits = raw.map { c ->
+            when (c) {
+                'o', 'O' -> '0'
+                'i', 'I', 'l', 'L', '|' -> '1'
+                's', 'S' -> '5'
+                // Handwritten 8 loops closed → OCR reads g ("og" for 08); open-topped 9 → q.
+                'g' -> '8'
+                'q' -> '9'
+                '?' -> '7'
+                'b' -> '6'
+                'z', 'Z' -> '2'
+                else -> c
+            }
+        }.joinToString("")
+        if (digits.any { !it.isDigit() }) return null
+        return digits.toIntOrNull()?.takeIf { it in 1..12 }
     }
 
     /** IMEI shape check: 14-16 digits; Luhn checksum reported separately via [imeiChecksumValid]. */

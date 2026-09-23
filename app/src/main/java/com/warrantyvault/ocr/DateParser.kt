@@ -30,14 +30,18 @@ object DateParser {
         "invoice date", "order date", "sale date", "date of sale", "receipt date"
     )
     private val EXPIRY_LABELS = listOf(
-        "warranty valid until", "warranty until", "valid until", "valid thru", "valid through",
+        "warranty valid until", "warranty valid till", "warranty valid upto", "warranty until",
+        // "Valid Till" is the single most common expiry label on printed warranty cards.
+        "valid till", "valid until", "valid thru", "valid through", "valid upto", "valid up to",
+        "warranty upto", "warranty up to",
         "warranty expiry", "warranty expiration", "warranty expires", "warranty end",
-        "coverage until", "coverage end", "expiration date", "expiry date", "expires on",
+        "coverage until", "coverage till", "coverage upto", "coverage end",
+        "expiration date", "expiry date", "expires on",
         "expires", "exp date", "end date", "warranty ends"
     )
     private val START_LABELS = listOf(
         "warranty start", "coverage start", "coverage begins", "start date", "warranty begins",
-        "coverage start date"
+        "coverage start date", "warranty valid from", "valid from"
     )
 
     private val MONTHS = mapOf(
@@ -45,8 +49,10 @@ object DateParser {
         "jul" to 7, "aug" to 8, "sep" to 9, "sept" to 9, "oct" to 10, "nov" to 11, "dec" to 12
     )
 
+    // Separators may be surrounded by spaces ("27 / 08 / 2025") — printed cards space them
+    // and OCR often inserts spaces around them.
     private val NUMERIC_DATE = Regex(
-        "(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})|(\\d{1,2})[./-](\\d{1,2})[./-](\\d{2,4})"
+        "(\\d{4})\\s*[./-]\\s*(\\d{1,2})\\s*[./-]\\s*(\\d{1,2})|(\\d{1,2})\\s*[./-]\\s*(\\d{1,2})\\s*[./-]\\s*(\\d{2,4})"
     )
     private val TEXTUAL_DATE = Regex(
         "(?i)(\\d{1,2})\\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*[.,]?\\s+(\\d{4})" +
@@ -65,11 +71,38 @@ object DateParser {
     data class NumericParse(val date: LocalDate, val ambiguous: Boolean)
 
     /**
+     * Handwriting OCR substitutes look-alike letters for digits inside dates ("og" for 08,
+     * "2?" for 27). Mapped only when a strict read of the token fails, so real text is never
+     * reinterpreted: o/O→0, i/I/l/|→1, s/S→5, g/q→9, ?→7, b→6, z→2, +→t-style shapes.
+     */
+    private fun fuzzyDigits(raw: String): String = raw.map { c ->
+        when (c) {
+            'o', 'O' -> '0'
+            'i', 'I', 'l', 'L', '|' -> '1'
+            's', 'S' -> '5'
+            // Handwritten 8 loops closed → OCR reads g ("og" for 08); open-topped 9 → q.
+            'g' -> '8'
+            'q' -> '9'
+            '?' -> '7'
+            'b' -> '6'
+            'z', 'Z' -> '2'
+            else -> c
+        }
+    }.joinToString("")
+
+    /**
      * Parses "d/m/y" ordered tokens (the global norm). If both day-first and month-first
      * readings are possible (e.g. 03/04/2026) the day-first reading is returned with
      * [NumericParse.ambiguous] = true.
      */
     fun parseNumericDetailed(token: String): NumericParse? {
+        parseNumericStrict(token)?.let { return it }
+        val fuzzed = fuzzyDigits(token.trim())
+        if (fuzzed != token.trim()) return parseNumericStrict(fuzzed)
+        return null
+    }
+
+    private fun parseNumericStrict(token: String): NumericParse? {
         val m = NUMERIC_DATE.matchEntire(token.trim()) ?: return parseNumericLooseDetailed(token)
         val (y, mo, d, d2, mo2, y2) = m.destructured
         return if (y.isNotEmpty()) {
@@ -92,17 +125,18 @@ object DateParser {
     }
 
     private fun parseNumericLooseDetailed(token: String): NumericParse? {
-        val parts = token.trim().split(Regex("[./-]"))
+        val parts = token.trim().split(Regex("\\s*[./-]\\s*"))
         if (parts.size != 3) return null
-        return try {
-            val a = parts[0].toInt(); val b = parts[1].toInt(); var c = parts[2].toInt()
-            if (c < 100) c += if (c <= 69) 2000 else 1900
-            if (parts[0].length == 4) {
-                makeDate(a, b, c)?.let { NumericParse(it, ambiguous = false) }
-            } else {
-                parseNumericDetailed("$a/${b}/$c")
-            }
-        } catch (e: NumberFormatException) { null }
+        if (!parts.all { it.isNotEmpty() && (it[0].isDigit() || it[0].lowercaseChar() in "oilsgqbz?") }) return null
+        val a = parts[0].toIntOrNull() ?: return null
+        val b = parts[1].toIntOrNull() ?: return null
+        var c = parts[2].toIntOrNull() ?: return null
+        if (c < 100) c += if (c <= 69) 2000 else 1900
+        return if (parts[0].length == 4) {
+            makeDate(a, b, c)?.let { NumericParse(it, ambiguous = false) }
+        } else {
+            parseNumericDetailed("$a/${b}/$c")
+        }
     }
 
     /** Back-compat: parses a numeric token or null. */

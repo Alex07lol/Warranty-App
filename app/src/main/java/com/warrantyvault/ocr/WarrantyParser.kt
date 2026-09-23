@@ -12,9 +12,12 @@ object WarrantyParser {
      * Number-first ("2 Year Warranty", "36-month warranty", "24 Months Warranty").
      * A following warrant/coverage word within ~20 chars is accepted but not required —
      * bare phrases like "1 Year Limited Warranty" must also match.
+     *
+     * The digits tolerate common handwriting-OCR look-alikes (uppercase I / lowercase l /
+     * | for 1, O / o for 0) — "I year (12 Mon+hs)" must still yield 12 months.
      */
     private val NUMBER_FIRST = Regex(
-        "(?i)\\b(\\d{1,3})\\s*[- ]?(years?|yrs?|y|months?|mo\\.?|m)\\b(?:[^\\n]{0,20}?(warranty|coverage|guarantee))?"
+        "(?i)\\b([0-9OolI|]{1,3})\\s*[- ]?(years?|yrs?|y|months?|mo\\.?|m)\\b(?:[^\\n]{0,20}?(warranty|coverage|guarantee))?"
     )
 
     /** Warranty-word-first ("Warranty: 3 Years", "Coverage: 18 months", "Warranty 2yr"). */
@@ -33,6 +36,18 @@ object WarrantyParser {
         else -> n
     }
 
+    /** Maps OCR look-alike digits ("I"→1, "O"→0) before parsing the count. */
+    private fun fuzzInt(raw: String): Int? {
+        val mapped = raw.map { c ->
+            when (c) {
+                'O', 'o' -> '0'
+                'l', 'I', '|' -> '1'
+                else -> c
+            }
+        }.joinToString("")
+        return mapped.toIntOrNull()
+    }
+
     fun extractDuration(lines: List<String>): DurationHit? {
         for (line in lines) {
             val m = WARRANTY_FIRST.find(line)
@@ -42,7 +57,7 @@ object WarrantyParser {
             }
             val n = NUMBER_FIRST.find(line)
             if (n != null) {
-                val count = n.groupValues[1].toIntOrNull() ?: continue
+                val count = fuzzInt(n.groupValues[1]) ?: continue
                 if (count in 1..240) return DurationHit(normalizeMonths(count, n.groupValues[2]), line.trim())
             }
         }
