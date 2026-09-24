@@ -39,6 +39,9 @@ class DriveAutoSync(
                     db.productDao().getAllProducts(userId).drop(1),
                     db.serviceHistoryDao().getAllServiceHistory(userId).drop(1)
                 ) { _, _ -> Unit }.collect {
+                    // Record the change first: even if no upload follows (auto-backup off, or paused
+                    // for a re-link), the dashboard must be able to say work is not backed up yet.
+                    DriveBackupService(context).markPendingChanges()
                     DriveSyncWorker.enqueue(context)
                 }
             } catch (t: Throwable) {

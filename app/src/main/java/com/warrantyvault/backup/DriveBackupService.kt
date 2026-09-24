@@ -8,6 +8,8 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -69,16 +71,6 @@ class DriveBackupService(context: Context) {
         data class Failed(val reason: String) : VisibleCopy()
     }
 
-    /** Persisted picture of the background sync, shown in Settings. */
-    data class SyncState(
-        val linked: Boolean,
-        val autoSyncEnabled: Boolean,
-        val paused: Boolean,
-        val message: String?,
-        val lastSyncMillis: Long,
-        val lastSyncCount: Int
-    )
-
     /** Outcome of asking Google for Drive permission. */
     sealed class Authorization {
         /** Permission already granted — carry on, no UI needed. */
@@ -120,6 +112,7 @@ class DriveBackupService(context: Context) {
                     val email = DriveRest.parseUser(request(DriveRest.aboutUrl(), "GET", grant.token)).email
                         ?: throw IOException("Linked with Google, but no account email came back")
                     prefs.edit().putString(KEY_EMAIL, email).apply()
+                    publish()
                     LinkedAccount(email)
                 }
                 is Grant.NeedsUser -> throw IOException("Google Drive permission was not granted")
@@ -133,6 +126,7 @@ class DriveBackupService(context: Context) {
 
     fun setAutoSyncEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_AUTO_SYNC, enabled).apply()
+        publish()
     }
 
     /** Whether a copy is also kept in the user-visible My Drive folder (default on). */
@@ -140,18 +134,27 @@ class DriveBackupService(context: Context) {
 
     fun setVisibleCopyEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(KEY_VISIBLE_COPY, enabled).apply()
+        publish()
     }
 
     fun autoSyncPaused(): Boolean = prefs.getBoolean(KEY_PAUSED, false)
 
-    fun syncState(): SyncState = SyncState(
-        linked = linkedEmail() != null,
-        autoSyncEnabled = autoSyncEnabled(),
-        paused = autoSyncPaused(),
-        message = prefs.getString(KEY_MESSAGE, null),
-        lastSyncMillis = lastBackupMillis(),
-        lastSyncCount = lastBackupCount()
-    )
+    fun syncState(): SyncState = readState()
+
+    /**
+     * Records that the vault changed and has not been backed up yet. Called by [DriveAutoSync]
+     * whether or not a sync will actually run, so the UI can say "you have unsynced changes" even
+     * when automatic backup is off or paused.
+     */
+    fun markPendingChanges() {
+        val pending = prefs.getInt(KEY_PENDING_COUNT, 0)
+        val since = if (pending == 0) System.currentTimeMillis() else prefs.getLong(KEY_PENDING_SINCE, 0L)
+        prefs.edit()
+            .putInt(KEY_PENDING_COUNT, pending + 1)
+            .putLong(KEY_PENDING_SINCE, since)
+            .apply()
+        publish()
+    }
 
     /** True when a background sync is currently allowed to run. */
     fun autoSyncArmed(): Boolean =
@@ -163,12 +166,17 @@ class DriveBackupService(context: Context) {
             .putLong(KEY_LAST_BACKUP, System.currentTimeMillis())
             .putInt(KEY_LAST_COUNT, productCount)
             .putString(KEY_MESSAGE, null)
+            // The upload carried the whole vault, so nothing is pending any more.
+            .putInt(KEY_PENDING_COUNT, 0)
+            .putLong(KEY_PENDING_SINCE, 0L)
             .apply()
+        publish()
     }
 
     /** Records a free-text status (skip reason, warning or error) shown as the last sync result. */
     internal fun recordSyncNote(message: String?) {
         prefs.edit().putString(KEY_MESSAGE, message ?: "Sync failed").apply()
+        publish()
     }
 
     /**
@@ -177,11 +185,13 @@ class DriveBackupService(context: Context) {
      */
     internal fun pauseAutoSync(reason: String) {
         prefs.edit().putBoolean(KEY_PAUSED, true).putString(KEY_MESSAGE, reason).apply()
+        publish()
     }
 
     /** Called after a successful link or manual backup, which proves the grant works again. */
     fun clearAutoSyncPause() {
         prefs.edit().putBoolean(KEY_PAUSED, false).apply()
+        publish()
     }
 
     /**
@@ -196,6 +206,7 @@ class DriveBackupService(context: Context) {
                 request(DriveRest.revokeUrl(token), "POST", token, ByteArray(0))
             }
             prefs.edit().clear().apply()
+            publish()
         }
     }
 
@@ -361,6 +372,24 @@ class DriveBackupService(context: Context) {
 
     // ---------------------------------------------------------------- internals
 
+    private fun readState(): SyncState = SyncState(
+        linked = linkedEmail() != null,
+        email = linkedEmail(),
+        autoSyncEnabled = autoSyncEnabled(),
+        visibleCopyEnabled = visibleCopyEnabled(),
+        paused = autoSyncPaused(),
+        message = prefs.getString(KEY_MESSAGE, null),
+        lastSyncMillis = lastBackupMillis(),
+        lastSyncCount = lastBackupCount(),
+        pendingChanges = prefs.getInt(KEY_PENDING_COUNT, 0),
+        pendingSinceMillis = prefs.getLong(KEY_PENDING_SINCE, 0L)
+    )
+
+    /** Pushes the persisted state to [observe] consumers. */
+    private fun publish() {
+        liveState.value = readState()
+    }
+
     private sealed class Grant {
         class Ok(val token: String) : Grant()
         class NeedsUser(val intentSender: IntentSender) : Grant()
@@ -458,9 +487,33 @@ class DriveBackupService(context: Context) {
         private const val KEY_VISIBLE_COPY = "drive_visible_copy_enabled"
         private const val KEY_PAUSED = "drive_auto_sync_paused"
         private const val KEY_MESSAGE = "drive_sync_message"
+        private const val KEY_PENDING_COUNT = "drive_pending_changes"
+        private const val KEY_PENDING_SINCE = "drive_pending_since_ms"
 
         /** Shared by every instance: the worker and the UI each build their own service. */
         private val uploadMutex = Mutex()
+
+        /**
+         * Live sync state for the UI. Seeded from disk on first access, then updated by every
+         * mutation, so a screen reflects a sync performed by the background worker without polling.
+         */
+        private val liveState = MutableStateFlow(SyncState())
+        private val liveStateLock = Any()
+
+        @Volatile
+        private var liveStateSeeded = false
+
+        fun observe(context: Context): StateFlow<SyncState> {
+            if (!liveStateSeeded) {
+                synchronized(liveStateLock) {
+                    if (!liveStateSeeded) {
+                        liveState.value = DriveBackupService(context).readState()
+                        liveStateSeeded = true
+                    }
+                }
+            }
+            return liveState
+        }
 
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 20_000

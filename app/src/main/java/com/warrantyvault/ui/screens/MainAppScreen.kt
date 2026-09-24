@@ -111,6 +111,13 @@ fun MainAppScreen() {
                     onNavigateToProducts = { navController.navigate(Screen.Products.route) },
                     onNavigateToScan = { navController.navigate(Screen.Scan.route) },
                     onNavigateToRepairs = { navController.navigate(Screen.Repairs.route) },
+                    onNavigateToSettings = {
+                        navController.navigate(Screen.Settings.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
                     onNavigateToProductDetail = { id -> navController.navigate("product_detail/$id") }
                 )
             }

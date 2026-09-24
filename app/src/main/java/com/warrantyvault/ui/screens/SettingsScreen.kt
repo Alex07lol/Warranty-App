@@ -48,7 +48,6 @@ import com.warrantyvault.service.ExportImportService
 import com.warrantyvault.ui.theme.WvDimens
 import com.warrantyvault.ui.theme.darkWvColors
 import com.warrantyvault.ui.theme.lightWvColors
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -78,40 +77,18 @@ fun SettingsScreen() {
     // Permission-gated: nothing leaves the device until the user completes Google's consent
     // screen, and the uploaded file lives in the app-private Drive folder.
     val driveService = remember { DriveBackupService(context) }
-    var driveEmail by remember { mutableStateOf(driveService.linkedEmail()) }
     var driveBusy by remember { mutableStateOf<String?>(null) }
     var needRelink by remember { mutableStateOf(false) }
-    var lastBackupMs by remember { mutableStateOf(driveService.lastBackupMillis()) }
-    var lastBackupCount by remember { mutableStateOf(driveService.lastBackupCount()) }
-    var autoSync by remember { mutableStateOf(driveService.autoSyncEnabled()) }
-    var autoSyncPaused by remember { mutableStateOf(driveService.autoSyncPaused()) }
-    var visibleCopy by remember { mutableStateOf(driveService.visibleCopyEnabled()) }
-    var syncMessage by remember { mutableStateOf(driveService.syncState().message) }
+
+    // Observed rather than polled: the service publishes on every change, including ones made by
+    // the background sync worker.
+    val driveState by DriveBackupService.observe(context).collectAsState()
 
     fun toast(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
 
     fun describeDriveError(e: Throwable): String {
         if (e is DriveBackupService.NeedsRelink) needRelink = true
         return e.message ?: "Google Drive error"
-    }
-
-    fun refreshDriveState() {
-        driveEmail = driveService.linkedEmail()
-        autoSync = driveService.autoSyncEnabled()
-        autoSyncPaused = driveService.autoSyncPaused()
-        visibleCopy = driveService.visibleCopyEnabled()
-        syncMessage = driveService.syncState().message
-        lastBackupMs = driveService.lastBackupMillis()
-        lastBackupCount = driveService.lastBackupCount()
-    }
-
-    // The sync itself runs in a WorkManager worker, so watch the persisted state while this screen
-    // is open rather than assuming only in-screen actions can change it.
-    LaunchedEffect(Unit) {
-        while (true) {
-            refreshDriveState()
-            delay(2000)
-        }
     }
 
     fun backupNow(label: String = "Backing up…", force: Boolean = true) {
@@ -139,7 +116,6 @@ fun SettingsScreen() {
             } catch (t: Throwable) {
                 toast("Backup failed: ${describeDriveError(t)}")
             } finally {
-                refreshDriveState()
                 driveBusy = null
             }
         }
@@ -173,7 +149,6 @@ fun SettingsScreen() {
             driveBusy = null
             outcome
                 .onSuccess { account ->
-                    driveEmail = account.email
                     needRelink = false
                     toast("Google Drive linked as ${account.email}")
                     // Permission granted: take the first backup straight away.
@@ -346,7 +321,7 @@ fun SettingsScreen() {
         Spacer(Modifier.height(WvDimens.Space4))
 
         SettingsGroup("Google Drive backup") {
-            if (driveEmail == null) {
+            if (driveState.email == null) {
                 SettingsRow(
                     icon = Icons.Default.CloudUpload,
                     title = driveBusy ?: "Back up to Google Drive",
@@ -355,7 +330,7 @@ fun SettingsScreen() {
                     onClick = { beginDriveLink() }
                 )
             } else {
-                if (needRelink || autoSyncPaused) {
+                if (needRelink || driveState.paused) {
                     SettingsRow(
                         icon = Icons.Default.LinkOff,
                         title = "Re-link Google Drive",
@@ -369,11 +344,11 @@ fun SettingsScreen() {
                     icon = Icons.Default.CloudUpload,
                     title = driveBusy ?: "Back up now",
                     subtitle = buildString {
-                        append(driveEmail)
+                        append(driveState.email)
                         append(" · ")
                         append(
-                            if (lastBackupMs > 0) {
-                                "last backup ${formatBackupTime(lastBackupMs)} (${lastBackupCount} product(s))"
+                            if (driveState.lastSyncMillis > 0) {
+                                "last backup ${formatBackupTime(driveState.lastSyncMillis)} (${driveState.lastSyncCount} product(s))"
                             } else {
                                 "no backup yet"
                             }
@@ -387,17 +362,16 @@ fun SettingsScreen() {
                     icon = Icons.Default.CloudSync,
                     title = "Auto-backup after changes",
                     subtitle = when {
-                        autoSyncPaused -> "Paused until you re-link Google Drive"
-                        !autoSync -> "Off — back up manually"
+                        driveState.paused -> "Paused until you re-link Google Drive"
+                        !driveState.autoSyncEnabled -> "Off — back up manually"
                         else -> "On — uploads about 10s after a change"
                     },
                     tint = wv.success,
                     trailing = {
                         Switch(
-                            checked = autoSync && !autoSyncPaused,
-                            enabled = !autoSyncPaused && driveBusy == null,
+                            checked = driveState.autoSyncEnabled && !driveState.paused,
+                            enabled = !driveState.paused && driveBusy == null,
                             onCheckedChange = { checked ->
-                                autoSync = checked
                                 driveService.setAutoSyncEnabled(checked)
                                 // Catch the vault up right away instead of waiting for the next edit.
                                 if (checked) DriveSyncWorker.enqueue(context)
@@ -409,7 +383,7 @@ fun SettingsScreen() {
                 SettingsRow(
                     icon = Icons.Default.Folder,
                     title = "Visible copy in My Drive",
-                    subtitle = if (visibleCopy) {
+                    subtitle = if (driveState.visibleCopyEnabled) {
                         "My Drive / ${DriveRest.VISIBLE_FOLDER_NAME} — openable from the Drive app"
                     } else {
                         "Off — the backup stays private to this app"
@@ -417,10 +391,9 @@ fun SettingsScreen() {
                     tint = wv.primary,
                     trailing = {
                         Switch(
-                            checked = visibleCopy,
+                            checked = driveState.visibleCopyEnabled,
                             enabled = driveBusy == null,
                             onCheckedChange = { checked ->
-                                visibleCopy = checked
                                 driveService.setVisibleCopyEnabled(checked)
                                 // Write (or refresh) the mirror straight away. Guarded, so it can
                                 // never replace a richer backup with this device's data.
@@ -429,12 +402,12 @@ fun SettingsScreen() {
                         )
                     }
                 )
-                if (syncMessage != null) {
+                driveState.message?.let { message ->
                     HorizontalDivider(color = wv.borderSubtle)
                     SettingsRow(
                         icon = Icons.Default.CloudSync,
                         title = "Last sync result",
-                        subtitle = syncMessage ?: "",
+                        subtitle = message,
                         tint = wv.warning
                     )
                 }
@@ -456,9 +429,6 @@ fun SettingsScreen() {
                         if (driveBusy == null) scope.launch {
                             driveBusy = "Unlinking…"
                             driveService.unlink()
-                            driveEmail = null
-                            lastBackupMs = 0
-                            lastBackupCount = 0
                             needRelink = false
                             driveBusy = null
                             toast("Google Drive unlinked")

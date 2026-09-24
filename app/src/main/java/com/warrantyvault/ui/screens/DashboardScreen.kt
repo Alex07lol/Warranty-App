@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.warrantyvault.WarrantyEngine
 import com.warrantyvault.WarrantyVaultApplication
+import com.warrantyvault.backup.DriveBackupService
 import com.warrantyvault.ui.components.*
 import com.warrantyvault.ui.theme.WvDimens
 import com.warrantyvault.ui.theme.darkWvColors
@@ -42,6 +43,7 @@ fun DashboardScreen(
     onNavigateToProducts: () -> Unit,
     onNavigateToScan: () -> Unit,
     onNavigateToRepairs: () -> Unit,
+    onNavigateToSettings: () -> Unit,
     onNavigateToProductDetail: (Long) -> Unit
 ) {
     val context = LocalContext.current
@@ -49,6 +51,10 @@ fun DashboardScreen(
     val productDao = app.database.productDao()
 
     val products by productDao.getAllProducts(app.currentUserId).collectAsState(initial = emptyList())
+
+    // Live Drive backup status: the background worker publishes into this flow, so the banner
+    // reflects a sync that finished while the dashboard was already on screen.
+    val driveState by DriveBackupService.observe(context).collectAsState()
 
     val statusOf = { p: com.warrantyvault.data.Product ->
         WarrantyEngine.warrantyStatusOf(p.purchaseDate, p.warrantyExpiryDate).status
@@ -144,6 +150,16 @@ fun DashboardScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // ---- Drive sync status (absent until Drive backup is set up) ----
+            if (driveState.linked) {
+                item {
+                    DriveSyncBanner(
+                        state = driveState,
+                        onClick = onNavigateToSettings
+                    )
                 }
             }
 
