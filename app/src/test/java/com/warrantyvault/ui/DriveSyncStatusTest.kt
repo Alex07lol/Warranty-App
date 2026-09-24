@@ -2,6 +2,7 @@ package com.warrantyvault.ui
 
 import com.warrantyvault.backup.SyncState
 import com.warrantyvault.ui.components.DriveSyncStatus
+import com.warrantyvault.ui.components.DriveSyncStatus.Action
 import com.warrantyvault.ui.components.DriveSyncStatus.Variant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -25,7 +26,8 @@ class DriveSyncStatusTest {
         message: String? = null,
         lastSyncMillis: Long = now - 5 * minute,
         lastSyncCount: Int = 4,
-        pendingChanges: Int = 0
+        pendingChanges: Int = 0,
+        syncing: Boolean = false
     ) = SyncState(
         linked = linked,
         email = email,
@@ -36,7 +38,8 @@ class DriveSyncStatusTest {
         lastSyncMillis = lastSyncMillis,
         lastSyncCount = lastSyncCount,
         pendingChanges = pendingChanges,
-        pendingSinceMillis = if (pendingChanges > 0) now - minute else 0L
+        pendingSinceMillis = if (pendingChanges > 0) now - minute else 0L,
+        syncing = syncing
     )
 
     @Test
@@ -113,6 +116,52 @@ class DriveSyncStatusTest {
 
         assertEquals(Variant.ERROR, presentation.variant)
         assertTrue(presentation.detail.contains("Re-link"))
+    }
+
+    @Test
+    fun `the sync action is offered whenever another backup would help`() {
+        assertEquals(Action.SYNC, DriveSyncStatus.present(state(), now).action)
+        assertEquals(Action.SYNC, DriveSyncStatus.present(state(pendingChanges = 2), now).action)
+        assertEquals(
+            "first backup is exactly when the button matters most",
+            Action.SYNC,
+            DriveSyncStatus.present(state(lastSyncMillis = 0L, lastSyncCount = 0), now).action
+        )
+    }
+
+    @Test
+    fun `no sync action when the fix lives in Settings instead`() {
+        assertEquals(Action.NONE, DriveSyncStatus.present(state(paused = true), now).action)
+        assertEquals(
+            "a refusal needs Restore, not another upload attempt",
+            Action.NONE,
+            DriveSyncStatus.present(state(message = "Drive holds 11 product(s), this device has 3."), now).action
+        )
+    }
+
+    @Test
+    fun `an unlinked vault offers no action`() {
+        assertEquals(Action.NONE, DriveSyncStatus.present(state(linked = false), now).action)
+    }
+
+    @Test
+    fun `an upload in flight is reported and cannot be started twice`() {
+        val presentation = DriveSyncStatus.present(state(syncing = true, pendingChanges = 3), now)
+
+        assertEquals("Syncing to Drive…", presentation.title)
+        assertEquals("Uploading your vault now", presentation.detail)
+        assertEquals(Action.SYNCING, presentation.action)
+    }
+
+    @Test
+    fun `an in-flight upload outranks pending work and an older message`() {
+        val presentation = DriveSyncStatus.present(
+            state(syncing = true, pendingChanges = 3, message = "earlier note"),
+            now
+        )
+
+        assertEquals(Variant.PENDING, presentation.variant)
+        assertEquals(Action.SYNCING, presentation.action)
     }
 
     @Test

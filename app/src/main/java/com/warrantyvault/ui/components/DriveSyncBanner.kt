@@ -16,10 +16,12 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +50,7 @@ import kotlinx.coroutines.delay
 fun DriveSyncBanner(
     state: SyncState,
     onClick: () -> Unit,
+    onSyncNow: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     // Nothing to render and nothing to schedule until Drive backup is set up: most users never
@@ -109,12 +112,30 @@ fun DriveSyncBanner(
                     color = wv.textSecondary
                 )
             }
-            Icon(
-                Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = wv.textMuted,
-                modifier = Modifier.size(18.dp)
-            )
+            when (presentation.action) {
+                // A tap already started an upload: show progress instead of letting it be tapped twice.
+                DriveSyncStatus.Action.SYNCING -> CircularProgressIndicator(
+                    modifier = Modifier.size(18.dp),
+                    strokeWidth = 2.dp,
+                    color = accent
+                )
+
+                DriveSyncStatus.Action.SYNC -> TextButton(onClick = onSyncNow) {
+                    Text(
+                        "Sync",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = accent
+                    )
+                }
+
+                // No action here: the banner still opens Settings, so point that out.
+                DriveSyncStatus.Action.NONE -> Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = wv.textMuted,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
         }
     }
 }

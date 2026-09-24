@@ -20,6 +20,16 @@ object AutoSyncPolicy {
     fun shouldSync(linked: Boolean, enabled: Boolean, paused: Boolean): Boolean =
         linked && enabled && !paused
 
+    /**
+     * Whether the sync worker should do anything when it runs.
+     *
+     * A user-initiated run (the dashboard's one-tap Sync) only needs a linked account: they just
+     * asked, so the automatic-backup toggle does not apply. An automatic run additionally respects
+     * the toggle and the paused-after-lost-grant state. Neither can run without an account.
+     */
+    fun shouldRun(userInitiated: Boolean, linked: Boolean, enabled: Boolean, paused: Boolean): Boolean =
+        if (userInitiated) linked else shouldSync(linked, enabled, paused)
+
     /** What to do with an upload request: send it, or refuse and explain. */
     sealed class UploadDecision {
         object Upload : UploadDecision()

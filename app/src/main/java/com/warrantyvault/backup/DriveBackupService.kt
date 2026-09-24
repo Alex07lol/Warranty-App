@@ -160,6 +160,20 @@ class DriveBackupService(context: Context) {
     fun autoSyncArmed(): Boolean =
         AutoSyncPolicy.shouldSync(linkedEmail() != null, autoSyncEnabled(), autoSyncPaused())
 
+    /**
+     * Marks an upload as in flight so the UI can show progress. Deliberately in-memory: if the
+     * process dies mid-upload the flag disappears with it rather than sticking at "syncing".
+     */
+    internal fun markSyncStarted() {
+        syncing = true
+        publish()
+    }
+
+    internal fun markSyncFinished() {
+        syncing = false
+        publish()
+    }
+
     internal fun recordSyncSuccess(productCount: Int) {
         prefs.edit()
             .putBoolean(KEY_PAUSED, false)
@@ -382,7 +396,8 @@ class DriveBackupService(context: Context) {
         lastSyncMillis = lastBackupMillis(),
         lastSyncCount = lastBackupCount(),
         pendingChanges = prefs.getInt(KEY_PENDING_COUNT, 0),
-        pendingSinceMillis = prefs.getLong(KEY_PENDING_SINCE, 0L)
+        pendingSinceMillis = prefs.getLong(KEY_PENDING_SINCE, 0L),
+        syncing = syncing
     )
 
     /** Pushes the persisted state to [observe] consumers. */
@@ -499,6 +514,9 @@ class DriveBackupService(context: Context) {
          */
         private val liveState = MutableStateFlow(SyncState())
         private val liveStateLock = Any()
+
+        @Volatile
+        private var syncing = false
 
         @Volatile
         private var liveStateSeeded = false

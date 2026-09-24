@@ -23,7 +23,9 @@ data class SyncState(
      * upload always sends the whole vault, so this is a "you have unsynced work" signal.
      */
     val pendingChanges: Int = 0,
-    val pendingSinceMillis: Long = 0L
+    val pendingSinceMillis: Long = 0L,
+    /** An upload is in flight right now (in-memory only; always false after a process restart). */
+    val syncing: Boolean = false
 ) {
     val hasPendingWork: Boolean get() = pendingChanges > 0
 }

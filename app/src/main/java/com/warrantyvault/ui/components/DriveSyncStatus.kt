@@ -14,7 +14,22 @@ object DriveSyncStatus {
 
     enum class Variant { HIDDEN, SYNCED, PENDING, ERROR }
 
-    data class Presentation(val variant: Variant, val title: String, val detail: String)
+    /** The one-tap control shown on the right of the banner. */
+    enum class Action {
+        /** Nothing to do here; the banner itself leads to Settings. */
+        NONE,
+        /** User can push a backup now. */
+        SYNC,
+        /** An upload is already running. */
+        SYNCING
+    }
+
+    data class Presentation(
+        val variant: Variant,
+        val title: String,
+        val detail: String,
+        val action: Action = Action.NONE
+    )
 
     fun present(state: SyncState, now: Long): Presentation {
         // Nothing to say until Drive backup has actually been set up.
@@ -28,6 +43,18 @@ object DriveSyncStatus {
             )
         }
 
+        // An upload in flight outranks everything else it could be reporting.
+        if (state.syncing) {
+            return Presentation(
+                Variant.PENDING,
+                "Syncing to Drive…",
+                "Uploading your vault now",
+                Action.SYNCING
+            )
+        }
+
+        // A message means the fix lives in Settings (restore that richer backup, re-link), so the
+        // banner offers no retry button of its own.
         state.message?.let { message ->
             return Presentation(Variant.ERROR, "Drive backup needs attention", message)
         }
@@ -38,17 +65,23 @@ object DriveSyncStatus {
             } else {
                 "${state.pendingChanges} changes not backed up"
             }
-            return Presentation(Variant.PENDING, title, pendingDetail(state, now))
+            return Presentation(Variant.PENDING, title, pendingDetail(state, now), Action.SYNC)
         }
 
         if (state.lastSyncMillis <= 0L) {
-            return Presentation(Variant.PENDING, "No Drive backup yet", "Tap to back up your vault")
+            return Presentation(
+                Variant.PENDING,
+                "No Drive backup yet",
+                "Back up your vault to Drive",
+                Action.SYNC
+            )
         }
 
         return Presentation(
             Variant.SYNCED,
             "Backed up to Drive",
-            "${productLabel(state.lastSyncCount)} · ${relativeTime(state.lastSyncMillis, now)}"
+            "${productLabel(state.lastSyncCount)} · ${relativeTime(state.lastSyncMillis, now)}",
+            Action.SYNC
         )
     }
 

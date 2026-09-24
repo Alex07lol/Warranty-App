@@ -10,6 +10,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.AppDatabase
 import com.warrantyvault.service.ExportImportService
@@ -37,13 +38,15 @@ class DriveSyncWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val service = DriveBackupService(applicationContext)
         val state = service.syncState()
+        val userInitiated = inputData.getBoolean(KEY_USER_INITIATED, false)
 
-        if (!AutoSyncPolicy.shouldSync(state.linked, state.autoSyncEnabled, state.paused)) {
-            // Nothing to do: not linked, auto-backup off, or waiting for the user to re-link.
+        if (!AutoSyncPolicy.shouldRun(userInitiated, state.linked, state.autoSyncEnabled, state.paused)) {
+            // Nothing to do: no account, automatic backup off, or waiting for the user to re-link.
             return@withContext Result.success()
         }
 
-        try {
+        service.markSyncStarted()
+        return@withContext try {
             val db = AppDatabase.getDatabase(applicationContext)
             val userId = (applicationContext as WarrantyVaultApplication).currentUserId
             val productCount = db.productDao().getProductCount(userId)
@@ -69,6 +72,8 @@ class DriveSyncWorker(
         } catch (e: Exception) {
             service.recordSyncNote(e.message ?: "Sync failed")
             if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
+        } finally {
+            service.markSyncFinished()
         }
     }
 
@@ -79,13 +84,29 @@ class DriveSyncWorker(
         /** Long enough to coalesce a burst of edits (scan confirm writes rows, then history). */
         private const val DEBOUNCE_SECONDS = 10L
         private const val MAX_ATTEMPTS = 3
+        private const val KEY_USER_INITIATED = "user_initiated"
 
         /** Schedules a debounced sync. Does nothing when auto-sync is not currently allowed. */
         fun enqueue(context: Context) {
             if (!DriveBackupService(context).autoSyncArmed()) return
+            enqueueRequest(context, initialDelaySeconds = DEBOUNCE_SECONDS, userInitiated = false)
+        }
 
+        /**
+         * Schedules an upload straight away for an explicit tap on the dashboard banner.
+         *
+         * It replaces any debounced sync already waiting (the tap supersedes it) and deliberately
+         * ignores the automatic-backup toggle — the user just asked for this one. It goes through
+         * the same worker, so it is still guarded against replacing a richer backup.
+         */
+        fun enqueueNow(context: Context) {
+            enqueueRequest(context, initialDelaySeconds = 0L, userInitiated = true)
+        }
+
+        private fun enqueueRequest(context: Context, initialDelaySeconds: Long, userInitiated: Boolean) {
             val request = OneTimeWorkRequestBuilder<DriveSyncWorker>()
-                .setInitialDelay(DEBOUNCE_SECONDS, TimeUnit.SECONDS)
+                .setInitialDelay(initialDelaySeconds, TimeUnit.SECONDS)
+                .setInputData(workDataOf(KEY_USER_INITIATED to userInitiated))
                 .setConstraints(
                     Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)

@@ -30,6 +30,11 @@ This is a per-installation developer task, not something an end user ever sees.
   this device, otherwise a fresh install (which seeds demo products) or a half-restored phone would
   overwrite a real backup with seed data. When that happens Settings explains it and points at
   Restore; *Back up now* is the explicit opt-in to overwrite anyway.
+- **Dashboard status and one-tap sync.** Once linked, the dashboard shows a banner with the last
+  backup time, how many changes are waiting, and anything needing attention; tapping it opens
+  Settings, and its *Sync* button pushes a backup immediately. That button works even with
+  automatic backup switched off, and goes through the same upload path — so it is still guarded and
+  will not replace a richer backup on Drive (*Back up now* in Settings is the deliberate override).
 - **Never prompts in the background.** If the grant is lost, background syncing pauses and Settings
   offers a one-tap re-link instead of a consent screen appearing on its own.
 - **Restore is re-linking.** On a new phone, tapping the same button links the account, reads

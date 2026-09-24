@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.warrantyvault.WarrantyEngine
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.backup.DriveBackupService
+import com.warrantyvault.backup.DriveSyncWorker
 import com.warrantyvault.ui.components.*
 import com.warrantyvault.ui.theme.WvDimens
 import com.warrantyvault.ui.theme.darkWvColors
@@ -158,7 +159,10 @@ fun DashboardScreen(
                 item {
                     DriveSyncBanner(
                         state = driveState,
-                        onClick = onNavigateToSettings
+                        onClick = onNavigateToSettings,
+                        // Same worker as the automatic path, so the overwrite guard still applies:
+                        // this backs up, it never forces over a richer backup on Drive.
+                        onSyncNow = { DriveSyncWorker.enqueueNow(context) }
                     )
                 }
             }

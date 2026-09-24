@@ -27,6 +27,27 @@ class AutoSyncPolicyTest {
         assertFalse("nothing satisfied", AutoSyncPolicy.shouldSync(linked = false, enabled = false, paused = true))
     }
 
+    // ---------------------------------------------------------------- shouldRun
+
+    @Test
+    fun `an automatic run obeys the toggle and the paused state`() {
+        assertTrue(AutoSyncPolicy.shouldRun(userInitiated = false, linked = true, enabled = true, paused = false))
+        assertFalse("auto-backup off", AutoSyncPolicy.shouldRun(userInitiated = false, linked = true, enabled = false, paused = false))
+        assertFalse("paused", AutoSyncPolicy.shouldRun(userInitiated = false, linked = true, enabled = true, paused = true))
+        assertFalse("unlinked", AutoSyncPolicy.shouldRun(userInitiated = false, linked = false, enabled = true, paused = false))
+    }
+
+    @Test
+    fun `a tap on the banner syncs even when automatic backup is off`() {
+        // The whole point of the one-tap action: it must work for someone who keeps auto-backup off.
+        assertTrue(AutoSyncPolicy.shouldRun(userInitiated = true, linked = true, enabled = false, paused = false))
+    }
+
+    @Test
+    fun `a tap still needs an account`() {
+        assertFalse(AutoSyncPolicy.shouldRun(userInitiated = true, linked = false, enabled = true, paused = false))
+    }
+
     // ---------------------------------------------------------------- decideUpload
 
     @Test
