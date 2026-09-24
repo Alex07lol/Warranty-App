@@ -2,7 +2,6 @@ package com.warrantyvault.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -21,8 +20,7 @@ import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Notification
 import com.warrantyvault.ui.components.WarrantyBackground
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -39,7 +37,7 @@ fun NotificationsScreen(
     val notificationDao = app.database.notificationDao()
     val notifications by notificationDao.getAllNotifications(app.currentUserId).collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
 
     val dateFormat = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
 
@@ -133,7 +131,7 @@ fun NotificationItem(
     dateFormat: SimpleDateFormat,
     onClick: () -> Unit
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val isUnread = !notification.isRead
 
     val accent = when {

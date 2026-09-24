@@ -1,14 +1,11 @@
 package com.warrantyvault.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,14 +15,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,8 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 
 data class NavItem(
     val title: String,
@@ -51,9 +46,11 @@ data class NavItem(
 )
 
 /**
- * Floating glass bottom navigation. Translucent pill above content with border +
- * shadow, gesture-inset aware. Selected item gets a small tinted pill and stronger
- * icon/text — never a giant filled capsule. Optional badge (e.g. unread alerts).
+ * Floating glass bottom navigation, matching the web app's `.bottom-nav` pill: a **dark** glass
+ * capsule in *both* themes (`--nav-bg`), a hairline white border (`--nav-line`), blur-scale shadow,
+ * muted `--nav-ink` labels, and an active item filled by the brand gradient with white ink and a
+ * blue glow. Stroke-level copy of the CSS, so light mode looks the same on the phone as in the
+ * browser. Optional badge (e.g. unread alerts).
  */
 @Composable
 fun WarrantyBottomNav(
@@ -63,8 +60,9 @@ fun WarrantyBottomNav(
     modifier: Modifier = Modifier,
     badgeCounts: Map<Int, Int> = emptyMap()
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
-    val navShape = RoundedCornerShape(WvDimens.RadiusGlassNav)
+    val wv = WvTheme.colors
+    val pill = RoundedCornerShape(WvDimens.RadiusPill)
+    val itemShape = RoundedCornerShape(WvDimens.RadiusLarge)
 
     Box(
         modifier = modifier
@@ -76,44 +74,46 @@ fun WarrantyBottomNav(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(WvDimens.NavHeight)
-                .shadow(elevation = 18.dp, shape = navShape, ambientColor = Color.Black, spotColor = Color.Black.copy(alpha = 0.35f))
-                .background(color = wv.glassNav, shape = navShape)
-                .border(width = 1.dp, color = wv.glassBorder, shape = navShape)
+                .shadow(
+                    elevation = 22.dp,
+                    shape = pill,
+                    ambientColor = Color.Black,
+                    spotColor = Color.Black.copy(alpha = 0.45f)
+                )
+                .background(color = wv.glassNav, shape = pill)
+                .border(width = 1.dp, color = wv.glassBorder, shape = pill)
                 .padding(horizontal = 6.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEachIndexed { index, item ->
                 val isSelected = index == selectedIndex
-                val iconAlpha by animateFloatAsState(
-                    targetValue = if (isSelected) 1f else 0.72f,
+
+                // The active pill fades in as the brand gradient (web `.nav-item.active`).
+                val activeProgress by animateFloatAsState(
+                    targetValue = if (isSelected) 1f else 0f,
                     animationSpec = tween(180),
-                    label = "navAlpha"
+                    label = "navActive"
                 )
                 val tint by animateColorAsState(
-                    targetValue = if (isSelected) wv.primary else wv.textSecondary,
+                    targetValue = if (isSelected) wv.onPrimary else wv.navInk,
                     animationSpec = tween(180),
                     label = "navTint"
-                )
-                val pillColor by animateColorAsState(
-                    targetValue = if (isSelected) wv.primarySoft else Color.Transparent,
-                    animationSpec = tween(180),
-                    label = "navPill"
                 )
 
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clip(RoundedCornerShape(WvDimens.RadiusPill))
-                        .background(pillColor)
+                        .clip(itemShape)
+                        .background(brush = wv.brandBrush, shape = itemShape, alpha = activeProgress)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             role = Role.Tab,
                             onClick = { onItemClick(index) }
                         )
-                        .padding(vertical = 2.dp),
+                        .padding(vertical = 7.dp, horizontal = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -123,33 +123,33 @@ fun WarrantyBottomNav(
                                 contentDescription = item.title,
                                 tint = tint,
                                 modifier = Modifier
-                                    .size(if (isSelected) 23.dp else 22.dp)
-                                    .alpha(iconAlpha)
+                                    .size(20.dp)
+                                    .alpha(if (isSelected) 1f else 0.9f)
                             )
                             val badge = badgeCounts[index] ?: 0
                             if (badge > 0) {
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
-                                        .offset(x = 7.dp, y = (-3).dp)
+                                        .offset(x = 9.dp, y = (-6).dp)
                                         .size(16.dp)
                                         .background(wv.error, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Text(
                                         text = if (badge > 9) "9+" else badge.toString(),
-                                        color = Color.White,
-                                        fontSize = 9.sp,
+                                        color = wv.onAccent,
+                                        fontSize = 9.5.sp,
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
                         }
-                        Spacer(Modifier.height(2.dp))
+                        Spacer(Modifier.height(3.dp))
                         Text(
                             text = item.title,
                             fontSize = 10.5.sp,
-                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                            fontWeight = FontWeight.SemiBold,
                             color = tint,
                             maxLines = 1
                         )

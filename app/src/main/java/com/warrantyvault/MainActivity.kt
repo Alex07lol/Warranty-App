@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import com.warrantyvault.notification.NotificationPermissionHelper
+import com.warrantyvault.ui.theme.ThemePreference
 import com.warrantyvault.ui.theme.WarrantyVaultTheme
 import com.warrantyvault.ui.screens.MainAppScreen
 
@@ -24,7 +26,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            WarrantyVaultTheme {
+            // The stored Light/Dark choice (System by default) drives every screen; the preference
+            // is already loaded from disk in Application.onCreate, so the first frame is correct.
+            val themeMode by ThemePreference.mode.collectAsState()
+            WarrantyVaultTheme(mode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

@@ -2,7 +2,6 @@ package com.warrantyvault.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,8 +21,7 @@ import coil.compose.AsyncImage
 import com.warrantyvault.WarrantyEngine
 import com.warrantyvault.data.Product
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -40,7 +38,7 @@ fun WarrantyProductCard(
     modifier: Modifier = Modifier,
     thumbnailPath: String? = null
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val info = WarrantyEngine.warrantyStatusOf(product.purchaseDate, product.warrantyExpiryDate)
     val (statusColor, statusSoft) = wv.statusColors(info.status)
 

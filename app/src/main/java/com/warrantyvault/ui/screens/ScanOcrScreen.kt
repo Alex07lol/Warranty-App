@@ -15,7 +15,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -46,8 +45,7 @@ import com.warrantyvault.ui.components.*
 import com.warrantyvault.ui.theme.RadiusLG
 import com.warrantyvault.ui.theme.RadiusMD
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -72,7 +70,7 @@ fun ScanOcrScreen(
         uri?.let { vm.onImageSelected(it) }
     }
     val pickerMimes = arrayOf("image/*", "application/pdf")
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
 
     WarrantyBackground {
         Column(
@@ -144,7 +142,7 @@ private fun ScanInputPane(
     onPick: () -> Unit,
     onDismissError: () -> Unit
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -222,7 +220,7 @@ private fun ReviewPane(
     onReparse: () -> Unit,
     onRetake: () -> Unit
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val dateFormat = remember { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()) }
     Column(
         modifier = Modifier
@@ -331,7 +329,7 @@ private fun ReviewTextField(
     errorText: String?,
     required: Boolean = false
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -380,7 +378,7 @@ private fun ReviewDateField(
     onDateEdit: (String, Long?) -> Unit,
     errorText: String?
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     var showPicker by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -450,7 +448,7 @@ private fun ReviewDateField(
 
 @Composable
 private fun SuccessPane(message: String, onDone: () -> Unit, onScanAnother: () -> Unit) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -493,7 +491,7 @@ private fun MatchDialog(
     onCreateNew: () -> Unit,
     onCancel: () -> Unit
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val topMatch = candidates.firstOrNull()
 
     AlertDialog(

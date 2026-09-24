@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,9 +39,8 @@ import com.warrantyvault.repair.RepairLocation
 import com.warrantyvault.repair.RepairLocationsViewModel
 import com.warrantyvault.ui.components.*
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
 import com.warrantyvault.ui.theme.formatDistanceLabel
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 
 /**
  * Dedicated Repair Locations experience: search box + use-my-location + results list.
@@ -53,7 +51,7 @@ import com.warrantyvault.ui.theme.lightWvColors
 @Composable
 fun RepairLocationsScreen() {
     val context = LocalContext.current
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val vm: RepairLocationsViewModel = viewModel(factory = RepairLocationsViewModel.Factory(OverpassRepairLocationProvider()))
     val state by vm.state.collectAsState()
 
@@ -283,7 +281,7 @@ fun RepairLocationsScreen() {
 
 @Composable
 private fun RepairLocationCard(location: RepairLocation, onClick: () -> Unit) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Surface(
         shape = RoundedCornerShape(WvDimens.RadiusMedium),
         color = MaterialTheme.colorScheme.surface,

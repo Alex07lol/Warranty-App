@@ -1,7 +1,6 @@
 package com.warrantyvault.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -19,8 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warrantyvault.WarrantyInfo
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 
 @Composable
 fun WarrantyStatusBadge(
@@ -46,7 +44,7 @@ fun StatusBadge(
     label: String,
     modifier: Modifier = Modifier
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val colors: Pair<androidx.compose.ui.graphics.Color, androidx.compose.ui.graphics.Color> = wv.statusColors(status)
     val color = colors.first
     val soft = colors.second

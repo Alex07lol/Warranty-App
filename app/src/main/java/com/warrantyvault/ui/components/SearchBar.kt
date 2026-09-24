@@ -1,6 +1,5 @@
 package com.warrantyvault.ui.components
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -20,7 +19,7 @@ fun WarrantySearchBar(
     modifier: Modifier = Modifier,
     placeholder: String = "Search by name, brand, serial, or tag…"
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,

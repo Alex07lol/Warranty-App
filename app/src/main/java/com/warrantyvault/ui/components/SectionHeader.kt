@@ -1,6 +1,5 @@
 package com.warrantyvault.ui.components
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,8 +10,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 
 @Composable
 fun WarrantySectionHeader(
@@ -21,7 +19,7 @@ fun WarrantySectionHeader(
     subtitle: String? = null,
     action: @Composable (() -> Unit)? = null
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -48,7 +46,7 @@ fun WarrantySectionHeader(
 /** Optional "See all" text action for section headers. */
 @Composable
 fun SeeAllAction(text: String = "See all", onClick: () -> Unit) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     TextButton(onClick = onClick) {
         Text(text, color = wv.primary, style = MaterialTheme.typography.labelLarge)
     }

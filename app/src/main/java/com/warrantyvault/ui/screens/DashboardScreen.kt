@@ -2,7 +2,6 @@ package com.warrantyvault.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -34,8 +33,8 @@ import com.warrantyvault.backup.DriveBackupService
 import com.warrantyvault.backup.DriveSyncWorker
 import com.warrantyvault.ui.components.*
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTextStyles
+import com.warrantyvault.ui.theme.WvTheme
 
 @Composable
 fun DashboardScreen(
@@ -64,7 +63,7 @@ fun DashboardScreen(
     val expiringSoonList = products.filter { statusOf(it) == "expiring_soon" }
     val expiredCount = products.count { statusOf(it) == "expired" }
 
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
 
     WarrantyBackground {
         LazyColumn(
@@ -85,15 +84,17 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
+                        // Web `.greeting` + `.greeting-name`: a small tracked uppercase eyebrow over
+                        // a tight, heavy display line. This is the app's signature header.
                         Text(
-                            "WarrantyVault",
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = wv.textPrimary
+                            "WARRANTY VAULT",
+                            style = WvTextStyles.Eyebrow,
+                            color = wv.textMuted
                         )
                         Text(
                             "Your devices. Your peace of mind.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = wv.textSecondary
+                            style = MaterialTheme.typography.headlineLarge,
+                            color = wv.textPrimary
                         )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(WvDimens.Space1)) {
@@ -126,7 +127,7 @@ fun DashboardScreen(
                                 ) {
                                     Text(
                                         if (unreadCount > 9) "9+" else unreadCount.toString(),
-                                        color = Color.White,
+                                        color = wv.onAccent,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -290,7 +291,7 @@ fun EmptyStateCard(
     actionText: String? = null,
     onAction: (() -> Unit)? = null
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Surface(
         shape = RoundedCornerShape(WvDimens.RadiusMedium),
         color = MaterialTheme.colorScheme.surface,

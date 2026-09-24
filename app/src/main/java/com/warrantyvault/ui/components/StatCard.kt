@@ -2,7 +2,6 @@ package com.warrantyvault.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,8 +17,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 
 /**
  * Neutral stat card with a semantic accent dot + tinted icon. Never a giant colored card.
@@ -34,7 +32,7 @@ fun WarrantyStatCard(
     accent: Color? = null,
     onClick: (() -> Unit)? = null
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val accentColor = accent ?: wv.textSecondary
     val container = MaterialTheme.colorScheme.surface
 
@@ -85,18 +83,18 @@ fun WarrantyStatCard(
 
 @Composable
 fun ActiveWarrantiesStat(value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     WarrantyStatCard("Active", value, "", Icons.Default.CheckCircle, modifier, wv.success, onClick)
 }
 
 @Composable
 fun ExpiringSoonStat(value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     WarrantyStatCard("Expiring", value, "", Icons.Default.Warning, modifier, wv.warning, onClick)
 }
 
 @Composable
 fun ExpiredWarrantiesStat(value: String, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     WarrantyStatCard("Expired", value, "", Icons.Default.Close, modifier, wv.error, onClick)
 }

@@ -5,6 +5,7 @@ import androidx.work.Configuration
 import com.warrantyvault.backup.DriveAutoSync
 import com.warrantyvault.data.AppDatabase
 import com.warrantyvault.data.User
+import com.warrantyvault.ui.theme.ThemePreference
 import com.warrantyvault.worker.ExpiryCheckWorker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +26,11 @@ class WarrantyVaultApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+
+        // Read the stored theme before the first frame: switching the app to Light/Dark must apply
+        // to the launch screen too, without a flash of the other palette.
+        ThemePreference.load(this)
+
         // Schedule the periodic warranty expiry check at app start.
         // (POST_NOTIFICATIONS is requested from MainActivity — an Application context
         // cannot show the permission dialog.)

@@ -1,7 +1,12 @@
 <resources>
+    <!--
+      Transparent system bars; the icon appearance (light/dark) is resolved at runtime in
+      WarrantyVaultTheme, because it has to follow the user's stored Light/Dark choice and not only
+      the device setting. On API 35+ the system bars are edge-to-edge by default, so any colour set
+      here would be ignored anyway.
+    -->
     <style name="Theme.WarrantyVault" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
     </style>
 </resources>

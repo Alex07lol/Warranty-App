@@ -45,9 +45,11 @@ import com.warrantyvault.backup.DriveRest
 import com.warrantyvault.backup.DriveSyncWorker
 import com.warrantyvault.export.PdfExportService
 import com.warrantyvault.service.ExportImportService
+import com.warrantyvault.ui.theme.ThemeMode
+import com.warrantyvault.ui.theme.ThemePreference
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
+import com.warrantyvault.ui.theme.summary
 import kotlinx.coroutines.launch
 
 @Composable
@@ -56,7 +58,9 @@ fun SettingsScreen() {
     val app = context.applicationContext as WarrantyVaultApplication
     val exportImportService = remember { ExportImportService(context, app.database) }
     val scope = rememberCoroutineScope()
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
+    // The stored Light/Dark choice, so the selector below reflects and updates the whole app.
+    val themeMode by ThemePreference.mode.collectAsState()
 
     var importPreview by remember { mutableStateOf<com.warrantyvault.service.ExportImportService.ImportPreview?>(null) }
     var importing by remember { mutableStateOf(false) }
@@ -217,8 +221,12 @@ fun SettingsScreen() {
             SettingsRow(
                 icon = Icons.Default.Palette,
                 title = "Theme",
-                subtitle = "Follows system (dark & light designed)",
+                subtitle = themeMode.summary(isSystemInDarkTheme()),
                 tint = wv.primary
+            )
+            ThemeModeSelector(
+                selected = themeMode,
+                onSelect = { ThemePreference.set(context, it) }
             )
         }
         Spacer(Modifier.height(WvDimens.Space4))
@@ -500,7 +508,7 @@ fun SettingsScreen() {
 
 @Composable
 private fun SettingsGroup(title: String, content: @Composable ColumnScope.() -> Unit) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Column {
         Text(
             title,
@@ -529,7 +537,7 @@ private fun SettingsRow(
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null
 ) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -556,6 +564,34 @@ private fun SettingsRow(
             trailing()
         } else if (onClick != null) {
             Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = null, tint = wv.textMuted, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+/**
+ * Three-way Light / System / Dark selector. Mirrors the web app's theme toggle, but makes the
+ * "follow the device" option explicit instead of hiding it behind a two-state switch.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemeModeSelector(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit
+) {
+    val options = ThemeMode.values()
+    SingleChoiceSegmentedButtonRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = WvDimens.Space4, end = WvDimens.Space4, bottom = WvDimens.Space3)
+    ) {
+        options.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+            ) {
+                Text(option.label, style = MaterialTheme.typography.labelLarge)
+            }
         }
     }
 }

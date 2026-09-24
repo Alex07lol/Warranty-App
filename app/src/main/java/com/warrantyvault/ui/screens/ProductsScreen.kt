@@ -1,7 +1,6 @@
 package com.warrantyvault.ui.screens
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,8 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.ui.components.*
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 import java.util.Locale
 
 @Composable
@@ -29,7 +27,7 @@ fun ProductsScreen(
     val context = LocalContext.current
     val app = context.applicationContext as WarrantyVaultApplication
     val productDao = app.database.productDao()
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
 
     var searchQuery by remember { mutableStateOf("") }
     val products by productDao.getAllProducts(app.currentUserId).collectAsState(initial = emptyList())

@@ -2,7 +2,6 @@ package com.warrantyvault.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,8 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.warrantyvault.backup.SyncState
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 import kotlinx.coroutines.delay
 
 /**
@@ -69,7 +67,7 @@ fun DriveSyncBanner(
     val presentation = DriveSyncStatus.present(state, now)
     if (presentation.variant == DriveSyncStatus.Variant.HIDDEN) return
 
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val (accent, icon) = when (presentation.variant) {
         DriveSyncStatus.Variant.SYNCED -> wv.success to Icons.Default.CloudDone
         DriveSyncStatus.Variant.PENDING -> wv.warning to Icons.Default.CloudSync

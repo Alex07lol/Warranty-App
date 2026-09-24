@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -55,6 +56,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.warrantyvault.ui.theme.ThemePreference
 import com.warrantyvault.ui.theme.WarrantyVaultTheme
 import java.io.File
 
@@ -78,7 +80,9 @@ class CameraCaptureActivity : ComponentActivity() {
         val outputFile = File.createTempFile("capture_", ".jpg", outputDir)
 
         setContent {
-            WarrantyVaultTheme {
+            // The capture screen is themed too, so the preview chrome matches the app's palette.
+            val themeMode by ThemePreference.mode.collectAsState()
+            WarrantyVaultTheme(mode = themeMode) {
                 Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
                     CameraCaptureContent(
                         outputFile = outputFile,

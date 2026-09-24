@@ -1,7 +1,6 @@
 package com.warrantyvault.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,8 +34,7 @@ import com.warrantyvault.export.PdfExportService
 import com.warrantyvault.ui.components.StatusBadge
 import com.warrantyvault.ui.components.WarrantyBackground
 import com.warrantyvault.ui.theme.WvDimens
-import com.warrantyvault.ui.theme.darkWvColors
-import com.warrantyvault.ui.theme.lightWvColors
+import com.warrantyvault.ui.theme.WvTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,7 +54,7 @@ fun ProductDetailScreen(
     val app = context.applicationContext as WarrantyVaultApplication
     val productDao = app.database.productDao()
     val scope = rememberCoroutineScope()
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
 
     var product by remember { mutableStateOf<Product?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -188,7 +186,7 @@ fun ProductDetailScreen(
 
 @Composable
 private fun OverviewTab(p: Product, info: com.warrantyvault.WarrantyInfo) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val (statusColor, _) = wv.statusColors(info.status)
 
     LazyColumn(
@@ -315,7 +313,7 @@ private fun DocumentsTab(productId: Long) {
     val app = LocalContext.current.applicationContext as WarrantyVaultApplication
     val documents by app.database.documentDao().getDocumentsByProductId(productId)
         .collectAsState(initial = emptyList())
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
 
     if (documents.isEmpty()) {
         Column(Modifier.padding(horizontal = WvDimens.ScreenGutter, vertical = WvDimens.Space3)) {
@@ -347,7 +345,7 @@ private fun RepairsTab(productId: Long) {
     val app = LocalContext.current.applicationContext as WarrantyVaultApplication
     val repairs by app.database.serviceHistoryDao().getServiceHistoryByProductId(productId)
         .collectAsState(initial = emptyList())
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
 
     if (repairs.isEmpty()) {
         Column(Modifier.padding(horizontal = WvDimens.ScreenGutter, vertical = WvDimens.Space3)) {
@@ -370,7 +368,7 @@ private fun RepairsTab(productId: Long) {
 
 @Composable
 private fun DocumentRow(fileName: String, addedAt: Long, verified: Boolean) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Surface(
         shape = RoundedCornerShape(WvDimens.RadiusMedium),
         color = MaterialTheme.colorScheme.surface,
@@ -419,7 +417,7 @@ private fun DocumentRow(fileName: String, addedAt: Long, verified: Boolean) {
 
 @Composable
 private fun RepairEventRow(event: ServiceHistory) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Surface(
         shape = RoundedCornerShape(WvDimens.RadiusMedium),
         color = MaterialTheme.colorScheme.surface,
@@ -464,7 +462,7 @@ private fun RepairEventRow(event: ServiceHistory) {
 
 @Composable
 private fun InfoCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     Surface(
         shape = RoundedCornerShape(WvDimens.RadiusMedium),
         color = MaterialTheme.colorScheme.surface,
@@ -480,7 +478,7 @@ private fun InfoCard(title: String, content: @Composable ColumnScope.() -> Unit)
 
 @Composable
 private fun KeyValue(label: String, value: String?, valueColor: androidx.compose.ui.graphics.Color? = null) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     if (value.isNullOrBlank()) return
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, style = MaterialTheme.typography.bodyMedium, color = wv.textMuted)
@@ -497,7 +495,7 @@ private fun KeyValue(label: String, value: String?, valueColor: androidx.compose
 /** Identifier row with copy; sensitive values are masked until the reveal is pressed. */
 @Composable
 private fun IdentifierRow(label: String, value: String?, sensitive: Boolean = false) {
-    val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
+    val wv = WvTheme.colors
     val clipboard = LocalClipboardManager.current
     var revealed by remember(label) { mutableStateOf(!sensitive) }
     if (value.isNullOrBlank()) return
