@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -39,11 +41,14 @@ import android.app.Activity
 import android.widget.Toast
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.backup.DriveBackupService
+import com.warrantyvault.backup.DriveRest
+import com.warrantyvault.backup.DriveSyncWorker
 import com.warrantyvault.export.PdfExportService
 import com.warrantyvault.service.ExportImportService
 import com.warrantyvault.ui.theme.WvDimens
 import com.warrantyvault.ui.theme.darkWvColors
 import com.warrantyvault.ui.theme.lightWvColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -78,6 +83,10 @@ fun SettingsScreen() {
     var needRelink by remember { mutableStateOf(false) }
     var lastBackupMs by remember { mutableStateOf(driveService.lastBackupMillis()) }
     var lastBackupCount by remember { mutableStateOf(driveService.lastBackupCount()) }
+    var autoSync by remember { mutableStateOf(driveService.autoSyncEnabled()) }
+    var autoSyncPaused by remember { mutableStateOf(driveService.autoSyncPaused()) }
+    var visibleCopy by remember { mutableStateOf(driveService.visibleCopyEnabled()) }
+    var syncMessage by remember { mutableStateOf(driveService.syncState().message) }
 
     fun toast(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
 
@@ -86,24 +95,51 @@ fun SettingsScreen() {
         return e.message ?: "Google Drive error"
     }
 
-    fun backupNow(label: String = "Backing up…") {
+    fun refreshDriveState() {
+        driveEmail = driveService.linkedEmail()
+        autoSync = driveService.autoSyncEnabled()
+        autoSyncPaused = driveService.autoSyncPaused()
+        visibleCopy = driveService.visibleCopyEnabled()
+        syncMessage = driveService.syncState().message
+        lastBackupMs = driveService.lastBackupMillis()
+        lastBackupCount = driveService.lastBackupCount()
+    }
+
+    // The sync itself runs in a WorkManager worker, so watch the persisted state while this screen
+    // is open rather than assuming only in-screen actions can change it.
+    LaunchedEffect(Unit) {
+        while (true) {
+            refreshDriveState()
+            delay(2000)
+        }
+    }
+
+    fun backupNow(label: String = "Backing up…", force: Boolean = true) {
         if (driveBusy != null) return
         scope.launch {
             driveBusy = label
             try {
                 val count = app.database.productDao().getProductCount(app.currentUserId)
                 val payload = exportImportService.buildExportJson()
-                driveService.uploadBackup(payload, driveService.appVersion(), count)
-                    .onSuccess {
-                        lastBackupMs = driveService.lastBackupMillis()
-                        lastBackupCount = it.productCount
+                driveService.uploadBackup(payload, driveService.appVersion(), count, force = force)
+                    .onSuccess { outcome ->
                         needRelink = false
-                        toast("Backed up ${it.productCount} product(s) to Google Drive")
+                        when (outcome) {
+                            is DriveBackupService.UploadOutcome.Uploaded -> {
+                                toast("Backed up ${outcome.productCount} product(s) to Google Drive")
+                                // The private backup is the one that matters; the mirror is best-effort.
+                                val copy = outcome.visibleCopy
+                                if (copy is DriveBackupService.VisibleCopy.Failed) toast(copy.reason)
+                            }
+                            // Refused by the overwrite guard: Drive holds more than this device.
+                            is DriveBackupService.UploadOutcome.Refused -> toast(outcome.reason)
+                        }
                     }
                     .onFailure { toast("Backup failed: ${describeDriveError(it)}") }
             } catch (t: Throwable) {
                 toast("Backup failed: ${describeDriveError(t)}")
             } finally {
+                refreshDriveState()
                 driveBusy = null
             }
         }
@@ -141,7 +177,9 @@ fun SettingsScreen() {
                     needRelink = false
                     toast("Google Drive linked as ${account.email}")
                     // Permission granted: take the first backup straight away.
-                    backupNow("Uploading first backup…")
+                    // Guarded upload: if Drive already holds a richer backup, the guard refuses and
+                    // tells the user to restore instead of overwriting it with this device's data.
+                    backupNow("Uploading first backup…", force = false)
                 }
                 .onFailure { toast("Couldn't link Google Drive: ${it.message ?: "permission not granted"}") }
         }
@@ -317,7 +355,7 @@ fun SettingsScreen() {
                     onClick = { beginDriveLink() }
                 )
             } else {
-                if (needRelink) {
+                if (needRelink || autoSyncPaused) {
                     SettingsRow(
                         icon = Icons.Default.LinkOff,
                         title = "Re-link Google Drive",
@@ -344,6 +382,62 @@ fun SettingsScreen() {
                     tint = wv.primary,
                     onClick = { backupNow() }
                 )
+                HorizontalDivider(color = wv.borderSubtle)
+                SettingsRow(
+                    icon = Icons.Default.CloudSync,
+                    title = "Auto-backup after changes",
+                    subtitle = when {
+                        autoSyncPaused -> "Paused until you re-link Google Drive"
+                        !autoSync -> "Off — back up manually"
+                        else -> "On — uploads about 10s after a change"
+                    },
+                    tint = wv.success,
+                    trailing = {
+                        Switch(
+                            checked = autoSync && !autoSyncPaused,
+                            enabled = !autoSyncPaused && driveBusy == null,
+                            onCheckedChange = { checked ->
+                                autoSync = checked
+                                driveService.setAutoSyncEnabled(checked)
+                                // Catch the vault up right away instead of waiting for the next edit.
+                                if (checked) DriveSyncWorker.enqueue(context)
+                            }
+                        )
+                    }
+                )
+                HorizontalDivider(color = wv.borderSubtle)
+                SettingsRow(
+                    icon = Icons.Default.Folder,
+                    title = "Visible copy in My Drive",
+                    subtitle = if (visibleCopy) {
+                        "My Drive / ${DriveRest.VISIBLE_FOLDER_NAME} — openable from the Drive app"
+                    } else {
+                        "Off — the backup stays private to this app"
+                    },
+                    tint = wv.primary,
+                    trailing = {
+                        Switch(
+                            checked = visibleCopy,
+                            enabled = driveBusy == null,
+                            onCheckedChange = { checked ->
+                                visibleCopy = checked
+                                driveService.setVisibleCopyEnabled(checked)
+                                // Write (or refresh) the mirror straight away. Guarded, so it can
+                                // never replace a richer backup with this device's data.
+                                if (checked) backupNow("Writing visible copy…", force = false)
+                            }
+                        )
+                    }
+                )
+                if (syncMessage != null) {
+                    HorizontalDivider(color = wv.borderSubtle)
+                    SettingsRow(
+                        icon = Icons.Default.CloudSync,
+                        title = "Last sync result",
+                        subtitle = syncMessage ?: "",
+                        tint = wv.warning
+                    )
+                }
                 HorizontalDivider(color = wv.borderSubtle)
                 SettingsRow(
                     icon = Icons.Default.CloudDownload,
@@ -462,7 +556,8 @@ private fun SettingsRow(
     title: String,
     subtitle: String,
     tint: Color,
-    onClick: (() -> Unit)? = null
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null
 ) {
     val wv = if (isSystemInDarkTheme()) darkWvColors() else lightWvColors()
     Row(
@@ -487,7 +582,9 @@ private fun SettingsRow(
             Text(title, style = MaterialTheme.typography.titleSmall, color = wv.textPrimary)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = wv.textSecondary)
         }
-        if (onClick != null) {
+        if (trailing != null) {
+            trailing()
+        } else if (onClick != null) {
             Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = null, tint = wv.textMuted, modifier = Modifier.size(18.dp))
         }
     }

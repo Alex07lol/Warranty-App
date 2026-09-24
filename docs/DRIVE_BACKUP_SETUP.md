@@ -16,8 +16,22 @@ This is a per-installation developer task, not something an end user ever sees.
 - **Private by design.** The backup is written to the Drive **app data folder**: it belongs to the
   user's Drive but only this app can see or read it. It is deliberately *not* visible in the normal
   Drive file list.
-- **First backup is automatic.** Once consent is granted the vault is uploaded immediately, and the
-  file is replaced on every later backup (`Back up now`).
+- **Optional visible copy.** With *Visible copy in My Drive* enabled (the default), the same file is
+  also written to a `WarrantyVault` folder in the user's My Drive, so it appears in the Drive app and
+  can be downloaded from any device, or imported by hand via *Import data (JSON)*. Restore always
+  reads the private app-data copy — the mirror is for the user, not for the sync.
+- **First backup is automatic.** Once consent is granted the vault is uploaded immediately (unless
+  the guard below applies), and the file is replaced on every later backup.
+- **Auto-backup after changes.** With auto-backup on (the default once linked), any change to the
+  vault — scan confirm, add/edit, import, service history — schedules an upload about 10 seconds
+  later, coalescing a burst of edits into a single request. It runs through WorkManager, waits for
+  connectivity, and retries a few times before giving up.
+- **The overwrite guard.** Automatic uploads never replace a backup holding *more* products than
+  this device, otherwise a fresh install (which seeds demo products) or a half-restored phone would
+  overwrite a real backup with seed data. When that happens Settings explains it and points at
+  Restore; *Back up now* is the explicit opt-in to overwrite anyway.
+- **Never prompts in the background.** If the grant is lost, background syncing pauses and Settings
+  offers a one-tap re-link instead of a consent screen appearing on its own.
 - **Restore is re-linking.** On a new phone, tapping the same button links the account, reads
   `warrantyvault-backup.json` back and runs it through the normal validated import preview — nothing
   is written until the user confirms, and existing records are never deleted.
@@ -30,7 +44,10 @@ This is a per-installation developer task, not something an end user ever sees.
 2. **Enable the Google Drive API**: *APIs & Services → Library → Google Drive API → Enable*.
 3. **Configure the OAuth consent screen**: *APIs & Services → OAuth consent screen*
    - User type: **External** (or Internal for a Workspace org)
-   - Add the scope `https://www.googleapis.com/auth/drive.appdata`
+   - Add the scopes `https://www.googleapis.com/auth/drive.appdata` (private backup) and
+     `https://www.googleapis.com/auth/drive.file` (the visible copy). `drive.file` is deliberately
+     used instead of the full `drive` scope: the app can then only see and manage files it created
+     itself, never the rest of the user's Drive.
    - While the app is unverified, add your own Google account under **Test users**
 4. **Create an Android OAuth client**: *APIs & Services → Credentials → Create credentials →
    OAuth client ID → Android*
@@ -74,4 +91,14 @@ Google could not match the app to the OAuth client. Check, in order:
   *Export JSON*, so it can also be imported by hand via *Import data (JSON)* on any device.
 - Only products, warranty periods and service history are backed up; attached document images stay
   on the device.
-- Backup is manual (button) or on first link. There is no background auto-sync yet.
+- The visible copy is plain JSON, readable by anything with access to that Drive account (product
+  names, serial numbers, IMEIs). Turn *Visible copy in My Drive* off to keep the backup private to
+  the app.
+- Because of the narrow `drive.file` scope, the app cannot see a `WarrantyVault` folder you created
+  by hand, so it will create its own folder of that name rather than reusing yours.
+- Grants made before `drive.file` was added do not cover it; if the mirror reports a permission
+  error, use *Re-link Google Drive* in Settings to approve the new scope.
+- Sync is scheduled on vault changes while the app runs; it is not a continuous background daemon,
+  and nothing is uploaded while the app is closed.
+- Automatic uploads are skipped when the device holds fewer products than the Drive backup (see the
+  guard above). Use *Back up now* to overwrite deliberately.

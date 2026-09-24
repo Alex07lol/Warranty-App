@@ -8,6 +8,8 @@ import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -47,10 +49,34 @@ class DriveBackupService(context: Context) {
 
     data class LinkedAccount(val email: String)
 
-    data class BackupUpload(
-        val modifiedTime: String?,
-        val sizeBytes: Long?,
-        val productCount: Int
+    /** Outcome of an upload attempt: it either replaced the Drive backup, or was refused. */
+    sealed class UploadOutcome {
+        data class Uploaded(
+            val productCount: Int,
+            val modifiedTime: String?,
+            val sizeBytes: Long?,
+            /** How the user-visible mirror went; it never changes the private backup's success. */
+            val visibleCopy: VisibleCopy
+        ) : UploadOutcome()
+
+        data class Refused(val reason: String) : UploadOutcome()
+    }
+
+    /** Outcome of mirroring the backup into the user-visible WarrantyVault folder. */
+    sealed class VisibleCopy {
+        data class Saved(val folder: String, val fileName: String) : VisibleCopy()
+        object Disabled : VisibleCopy()
+        data class Failed(val reason: String) : VisibleCopy()
+    }
+
+    /** Persisted picture of the background sync, shown in Settings. */
+    data class SyncState(
+        val linked: Boolean,
+        val autoSyncEnabled: Boolean,
+        val paused: Boolean,
+        val message: String?,
+        val lastSyncMillis: Long,
+        val lastSyncCount: Int
     )
 
     /** Outcome of asking Google for Drive permission. */
@@ -101,6 +127,63 @@ class DriveBackupService(context: Context) {
         }
     }
 
+    // ---------------------------------------------------------------- auto-sync state
+
+    fun autoSyncEnabled(): Boolean = prefs.getBoolean(KEY_AUTO_SYNC, true)
+
+    fun setAutoSyncEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_AUTO_SYNC, enabled).apply()
+    }
+
+    /** Whether a copy is also kept in the user-visible My Drive folder (default on). */
+    fun visibleCopyEnabled(): Boolean = prefs.getBoolean(KEY_VISIBLE_COPY, true)
+
+    fun setVisibleCopyEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_VISIBLE_COPY, enabled).apply()
+    }
+
+    fun autoSyncPaused(): Boolean = prefs.getBoolean(KEY_PAUSED, false)
+
+    fun syncState(): SyncState = SyncState(
+        linked = linkedEmail() != null,
+        autoSyncEnabled = autoSyncEnabled(),
+        paused = autoSyncPaused(),
+        message = prefs.getString(KEY_MESSAGE, null),
+        lastSyncMillis = lastBackupMillis(),
+        lastSyncCount = lastBackupCount()
+    )
+
+    /** True when a background sync is currently allowed to run. */
+    fun autoSyncArmed(): Boolean =
+        AutoSyncPolicy.shouldSync(linkedEmail() != null, autoSyncEnabled(), autoSyncPaused())
+
+    internal fun recordSyncSuccess(productCount: Int) {
+        prefs.edit()
+            .putBoolean(KEY_PAUSED, false)
+            .putLong(KEY_LAST_BACKUP, System.currentTimeMillis())
+            .putInt(KEY_LAST_COUNT, productCount)
+            .putString(KEY_MESSAGE, null)
+            .apply()
+    }
+
+    /** Records a free-text status (skip reason, warning or error) shown as the last sync result. */
+    internal fun recordSyncNote(message: String?) {
+        prefs.edit().putString(KEY_MESSAGE, message ?: "Sync failed").apply()
+    }
+
+    /**
+     * Stops background syncing after a lost or revoked grant. The linked account is deliberately
+     * kept so Settings can offer a one-tap re-link, and the Drive file is never touched.
+     */
+    internal fun pauseAutoSync(reason: String) {
+        prefs.edit().putBoolean(KEY_PAUSED, true).putString(KEY_MESSAGE, reason).apply()
+    }
+
+    /** Called after a successful link or manual backup, which proves the grant works again. */
+    fun clearAutoSyncPause() {
+        prefs.edit().putBoolean(KEY_PAUSED, false).apply()
+    }
+
     /**
      * Unlinks this device: the app's OAuth grant is revoked (which also invalidates the cached
      * access token) and local prefs are cleared. The Drive backup file itself is left alone, so
@@ -125,34 +208,140 @@ class DriveBackupService(context: Context) {
     suspend fun uploadBackup(
         exportJson: String,
         appVersion: String,
-        productCount: Int
-    ): Result<BackupUpload> = withContext(Dispatchers.IO) {
+        productCount: Int,
+        force: Boolean = false
+    ): Result<UploadOutcome> = withContext(Dispatchers.IO) {
         runCatching {
-            val token = requireToken()
-            val envelope = BackupEnvelope.wrap(exportJson, appVersion, nowIso(), productCount)
-            val body = envelope.toByteArray(Charsets.UTF_8)
+            // One upload at a time. Without this the background worker and the manual button can
+            // both observe "no backup yet" and each create a file.
+            uploadMutex.withLock {
+                val token = requireToken()
+                val existing = listFiles(token).firstOrNull()
 
-            val existing = listFiles(token).firstOrNull()
-            val response = if (existing != null) {
-                request(DriveRest.updateUrl(existing.id), "PATCH", token, body)
+                val decision = AutoSyncPolicy.decideUpload(force, productCount, existing?.productCount)
+                if (decision is AutoSyncPolicy.UploadDecision.Refuse) {
+                    recordSyncNote(decision.reason)
+                    return@withLock UploadOutcome.Refused(decision.reason)
+                }
+
+                val envelope = BackupEnvelope.wrap(exportJson, appVersion, nowIso(), productCount)
+                val content = envelope.toByteArray(Charsets.UTF_8)
+                val properties = mapOf(
+                    DriveRest.PROP_PRODUCT_COUNT to productCount.toString(),
+                    DriveRest.PROP_FORMAT to BackupEnvelope.FORMAT
+                )
+
+                val response = if (existing != null) {
+                    request(
+                        DriveRest.updateUrl(existing.id),
+                        "PATCH",
+                        token,
+                        DriveRest.multipartBody(BackupEnvelope.FILE_NAME, content, properties),
+                        DriveRest.MULTIPART_CONTENT_TYPE
+                    )
+                } else {
+                    request(
+                        DriveRest.createUrl(),
+                        "POST",
+                        token,
+                        DriveRest.multipartBody(
+                            BackupEnvelope.FILE_NAME,
+                            content,
+                            properties,
+                            parents = listOf(DriveRest.APPDATA_FOLDER)
+                        ),
+                        DriveRest.MULTIPART_CONTENT_TYPE
+                    )
+                }
+                val info = DriveRest.parseFile(response)
+
+                // The visible mirror is a convenience for the user's own file list, so a failure
+                // here is reported without failing the authoritative private backup.
+                val visible = if (visibleCopyEnabled()) {
+                    saveVisibleCopy(token, content, productCount)
+                } else {
+                    VisibleCopy.Disabled
+                }
+
+                recordSyncSuccess(productCount)
+                if (visible is VisibleCopy.Failed) {
+                    recordSyncNote("Private backup saved. Visible copy failed: ${visible.reason}")
+                }
+
+                UploadOutcome.Uploaded(productCount, info.modifiedTime, info.sizeBytes, visible)
+            }
+        }
+    }
+
+    /** Metadata of the backup currently on Drive, or null when nothing has been uploaded yet. */
+    suspend fun remoteBackupInfo(): Result<DriveRest.BackupFileInfo?> = withContext(Dispatchers.IO) {
+        runCatching { listFiles(requireToken()).firstOrNull() }
+    }
+
+    /**
+     * Writes a copy into a `WarrantyVault` folder in the user's My Drive so it is visible and
+     * downloadable from the Drive app. Only files this app created are ever touched, because the
+     * grant is the narrow `drive.file` scope.
+     *
+     * Restore deliberately keeps reading the private app-data copy, which is the single source of
+     * truth; the mirror exists so the user can see and take their data with them.
+     */
+    private fun saveVisibleCopy(token: String, content: ByteArray, productCount: Int): VisibleCopy {
+        return try {
+            val folderId = resolveVisibleFolder(token)
+            val existing = DriveRest.parseFileList(
+                request(DriveRest.childrenQueryUrl(folderId), "GET", token)
+            ).firstOrNull()
+
+            val properties = mapOf(
+                DriveRest.PROP_PRODUCT_COUNT to productCount.toString(),
+                DriveRest.PROP_FORMAT to BackupEnvelope.FORMAT
+            )
+            if (existing != null) {
+                request(
+                    DriveRest.updateUrl(existing.id),
+                    "PATCH",
+                    token,
+                    DriveRest.multipartBody(BackupEnvelope.FILE_NAME, content, properties),
+                    DriveRest.MULTIPART_CONTENT_TYPE
+                )
             } else {
                 request(
                     DriveRest.createUrl(),
                     "POST",
                     token,
-                    DriveRest.multipartCreateBody(BackupEnvelope.FILE_NAME, body),
+                    DriveRest.multipartBody(
+                        BackupEnvelope.FILE_NAME,
+                        content,
+                        properties,
+                        parents = listOf(folderId)
+                    ),
                     DriveRest.MULTIPART_CONTENT_TYPE
                 )
             }
-            val info = DriveRest.parseFile(response)
-
-            prefs.edit()
-                .putLong(KEY_LAST_BACKUP, System.currentTimeMillis())
-                .putInt(KEY_LAST_COUNT, productCount)
-                .apply()
-
-            BackupUpload(info.modifiedTime, info.sizeBytes, productCount)
+            VisibleCopy.Saved(DriveRest.VISIBLE_FOLDER_NAME, BackupEnvelope.FILE_NAME)
+        } catch (e: NeedsRelink) {
+            VisibleCopy.Failed("Google needs permission again — re-link to restore it.")
+        } catch (e: Exception) {
+            VisibleCopy.Failed(e.message ?: "unknown error")
         }
+    }
+
+    /** Finds the visible folder, creating it in My Drive on first use. */
+    private fun resolveVisibleFolder(token: String): String {
+        val existing = DriveRest.parseFileList(
+            request(DriveRest.visibleFolderQueryUrl(), "GET", token)
+        ).firstOrNull()
+        if (existing != null) return existing.id
+
+        val created = request(
+            DriveRest.metadataCreateUrl(),
+            "POST",
+            token,
+            DriveRest.folderCreateBody(),
+            "application/json; charset=UTF-8"
+        )
+        return DriveRest.parseFile(created).id
     }
 
     /** Downloads and validates the backup on Drive, ready for the import pipeline. */
@@ -180,7 +369,14 @@ class DriveBackupService(context: Context) {
     /** Blocking; always called from an IO dispatcher. */
     private fun requestGrant(): Grant {
         val request = AuthorizationRequest.builder()
-            .setRequestedScopes(listOf(Scope(DriveRest.SCOPE_URL)))
+            // Both scopes in one prompt: the private app-data backup, plus the narrow drive.file
+            // scope that lets this app maintain its own visible copy in the user's Drive.
+            .setRequestedScopes(
+                listOf(
+                    Scope(DriveRest.APPDATA_SCOPE_URL),
+                    Scope(DriveRest.DRIVE_FILE_SCOPE_URL)
+                )
+            )
             .build()
         return try {
             val result = Tasks.await(authClient.authorize(request))
@@ -204,7 +400,8 @@ class DriveBackupService(context: Context) {
         return when (val grant = requestGrant()) {
             is Grant.Ok -> grant.token
             is Grant.NeedsUser ->
-                throw NeedsRelink("Google Drive permission expired — re-link the account to continue.")
+                // Covers both a revoked grant and a scope this account has not approved yet.
+                throw NeedsRelink("Google Drive needs permission again — re-link the account to continue.")
         }
     }
 
@@ -237,7 +434,7 @@ class DriveBackupService(context: Context) {
 
             if (code !in 200..299) {
                 if (code == 401) {
-                    throw NeedsRelink("Google Drive permission expired — re-link the account to continue.")
+                    throw NeedsRelink("Google Drive needs permission again — re-link the account to continue.")
                 }
                 // 403 is usually "Drive API not enabled for this project" or a scope problem, so the
                 // Google message is passed through rather than flattened into a generic error.
@@ -257,6 +454,13 @@ class DriveBackupService(context: Context) {
         private const val KEY_EMAIL = "drive_account_email"
         private const val KEY_LAST_BACKUP = "drive_last_backup_ms"
         private const val KEY_LAST_COUNT = "drive_last_backup_count"
+        private const val KEY_AUTO_SYNC = "drive_auto_sync_enabled"
+        private const val KEY_VISIBLE_COPY = "drive_visible_copy_enabled"
+        private const val KEY_PAUSED = "drive_auto_sync_paused"
+        private const val KEY_MESSAGE = "drive_sync_message"
+
+        /** Shared by every instance: the worker and the UI each build their own service. */
+        private val uploadMutex = Mutex()
 
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 20_000

@@ -2,6 +2,7 @@ package com.warrantyvault
 
 import android.app.Application
 import androidx.work.Configuration
+import com.warrantyvault.backup.DriveAutoSync
 import com.warrantyvault.data.AppDatabase
 import com.warrantyvault.data.User
 import com.warrantyvault.worker.ExpiryCheckWorker
@@ -112,6 +113,10 @@ class WarrantyVaultApplication : Application(), Configuration.Provider {
                     )
                 )
             }
+
+            // Keep the Google Drive backup current with in-app changes. A no-op until the user
+            // links an account and leaves auto-backup enabled.
+            DriveAutoSync(this@WarrantyVaultApplication, database, currentUserId).start()
         }
     }
 }
