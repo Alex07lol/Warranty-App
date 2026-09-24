@@ -38,6 +38,20 @@ class ExportImportService(private val context: Context, private val db: AppDatab
     // ---------------- Export (unchanged behavior, preserved) ----------------
 
     suspend fun exportJson(): Uri = withContext(Dispatchers.IO) {
+        saveToDownloads(
+            buildExportJson(),
+            "warrantyvault-export-${System.currentTimeMillis()}.json",
+            "application/json"
+        )
+    }
+
+    /**
+     * The canonical full-backup document (products + warranties + service history).
+     *
+     * The Downloads export and the Google Drive backup both call this, so a Drive backup is the
+     * same document as a JSON export and restores through the identical validated import path.
+     */
+    suspend fun buildExportJson(): String = withContext(Dispatchers.IO) {
         val products = db.productDao().getAllForUser(currentUserId())
         val productIds = products.map { it.id }
         val services = db.serviceHistoryDao().getByProductIds(productIds)
@@ -98,8 +112,7 @@ class ExportImportService(private val context: Context, private val db: AppDatab
             }
         )
 
-        val jsonString = json.encodeToString(exportData)
-        return@withContext saveToDownloads(jsonString, "warrantyvault-export-${System.currentTimeMillis()}.json", "application/json")
+        return@withContext json.encodeToString(exportData)
     }
 
     suspend fun exportCsv(): Uri = withContext(Dispatchers.IO) {
@@ -219,8 +232,14 @@ class ExportImportService(private val context: Context, private val db: AppDatab
     suspend fun buildPreview(uri: Uri): ImportPreview = withContext(Dispatchers.IO) {
         val text = readText(uri)
             ?: return@withContext ImportPreview(emptyList(), listOf(ImportIssue(-1, "Failed to open file")), 0)
+        return@withContext buildPreviewFromText(text, context.contentResolver.getType(uri) ?: "")
+    }
 
-        val mime = context.contentResolver.getType(uri) ?: ""
+    /**
+     * The same validation pipeline as [buildPreview], for content that never touches a file —
+     * e.g. a backup downloaded from Google Drive and unwrapped in memory.
+     */
+    suspend fun buildPreviewFromText(text: String, mime: String): ImportPreview = withContext(Dispatchers.IO) {
         val rows: List<Map<String, String?>> = when {
             mime.contains("json") || text.trimStart().startsWith("{") || text.trimStart().startsWith("[") ->
                 parseJsonRows(text).fold(

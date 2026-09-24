@@ -12,6 +12,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -30,6 +31,7 @@ import com.warrantyvault.WarrantyEngine
 import com.warrantyvault.WarrantyVaultApplication
 import com.warrantyvault.data.Product
 import com.warrantyvault.data.ServiceHistory
+import com.warrantyvault.export.PdfExportService
 import com.warrantyvault.ui.components.StatusBadge
 import com.warrantyvault.ui.components.WarrantyBackground
 import com.warrantyvault.ui.theme.WvDimens
@@ -58,6 +60,7 @@ fun ProductDetailScreen(
 
     var product by remember { mutableStateOf<Product?>(null) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var exportingPdf by remember { mutableStateOf(false) }
 
     // Collect product updates on a background dispatcher via the DAO flow.
     LaunchedEffect(productId) {
@@ -95,6 +98,30 @@ fun ProductDetailScreen(
                     )
                     IconButton(onClick = { onEditClick(p.id) }) {
                         Icon(Icons.Default.Edit, contentDescription = "Edit product", tint = wv.textSecondary)
+                    }
+                    IconButton(
+                        enabled = !exportingPdf,
+                        onClick = {
+                            scope.launch {
+                                exportingPdf = true
+                                runCatching {
+                                    val svc = PdfExportService(context, app.database)
+                                    val uri = svc.exportProductPdf(p.id)
+                                    context.startActivity(svc.shareIntent(uri))
+                                }.onFailure {
+                                    android.widget.Toast.makeText(
+                                        context, "Couldn't create PDF: ${it.message}", android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                                exportingPdf = false
+                            }
+                        }
+                    ) {
+                        Icon(
+                            Icons.Default.PictureAsPdf,
+                            contentDescription = "Export warranty PDF",
+                            tint = wv.textSecondary
+                        )
                     }
                     IconButton(onClick = { showDeleteConfirm = true }) {
                         Icon(Icons.Default.Delete, contentDescription = "Delete product", tint = wv.error)

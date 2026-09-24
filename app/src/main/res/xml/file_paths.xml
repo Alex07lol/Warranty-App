@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths exposed through the FileProvider for sharing generated PDF exports. -->
+<paths>
+    <cache-path
+        name="exports"
+        path="exports/" />
+</paths>

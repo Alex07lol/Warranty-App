@@ -1,6 +1,7 @@
 package com.warrantyvault.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,11 +13,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LinkOff
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,8 +35,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import android.app.Activity
 import android.widget.Toast
 import com.warrantyvault.WarrantyVaultApplication
+import com.warrantyvault.backup.DriveBackupService
+import com.warrantyvault.export.PdfExportService
 import com.warrantyvault.service.ExportImportService
 import com.warrantyvault.ui.theme.WvDimens
 import com.warrantyvault.ui.theme.darkWvColors
@@ -56,6 +66,110 @@ fun SettingsScreen() {
                 importPreview = exportImportService.buildPreview(uri)
                 importing = false
             }
+        }
+    }
+
+    // ---- Google Drive backup ----
+    // Permission-gated: nothing leaves the device until the user completes Google's consent
+    // screen, and the uploaded file lives in the app-private Drive folder.
+    val driveService = remember { DriveBackupService(context) }
+    var driveEmail by remember { mutableStateOf(driveService.linkedEmail()) }
+    var driveBusy by remember { mutableStateOf<String?>(null) }
+    var needRelink by remember { mutableStateOf(false) }
+    var lastBackupMs by remember { mutableStateOf(driveService.lastBackupMillis()) }
+    var lastBackupCount by remember { mutableStateOf(driveService.lastBackupCount()) }
+
+    fun toast(message: String) = Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+
+    fun describeDriveError(e: Throwable): String {
+        if (e is DriveBackupService.NeedsRelink) needRelink = true
+        return e.message ?: "Google Drive error"
+    }
+
+    fun backupNow(label: String = "Backing up…") {
+        if (driveBusy != null) return
+        scope.launch {
+            driveBusy = label
+            try {
+                val count = app.database.productDao().getProductCount(app.currentUserId)
+                val payload = exportImportService.buildExportJson()
+                driveService.uploadBackup(payload, driveService.appVersion(), count)
+                    .onSuccess {
+                        lastBackupMs = driveService.lastBackupMillis()
+                        lastBackupCount = it.productCount
+                        needRelink = false
+                        toast("Backed up ${it.productCount} product(s) to Google Drive")
+                    }
+                    .onFailure { toast("Backup failed: ${describeDriveError(it)}") }
+            } catch (t: Throwable) {
+                toast("Backup failed: ${describeDriveError(t)}")
+            } finally {
+                driveBusy = null
+            }
+        }
+    }
+
+    fun restoreFromDrive() {
+        if (driveBusy != null) return
+        scope.launch {
+            driveBusy = "Contacting Drive…"
+            try {
+                driveService.fetchBackup()
+                    .onSuccess { backup ->
+                        // Unwrapped payload goes through the same validated preview as a file import,
+                        // so the user confirms before anything is written.
+                        importPreview = exportImportService.buildPreviewFromText(backup.dataJson, "application/json")
+                    }
+                    .onFailure { toast("Restore failed: ${describeDriveError(it)}") }
+            } catch (t: Throwable) {
+                toast("Restore failed: ${describeDriveError(t)}")
+            } finally {
+                driveBusy = null
+            }
+        }
+    }
+
+    // Runs after Google's consent UI returns (and directly when consent already stands).
+    val completeDriveLink: () -> Unit = {
+        scope.launch {
+            driveBusy = "Linking…"
+            val outcome = driveService.finishAuthorization()
+            driveBusy = null
+            outcome
+                .onSuccess { account ->
+                    driveEmail = account.email
+                    needRelink = false
+                    toast("Google Drive linked as ${account.email}")
+                    // Permission granted: take the first backup straight away.
+                    backupNow("Uploading first backup…")
+                }
+                .onFailure { toast("Couldn't link Google Drive: ${it.message ?: "permission not granted"}") }
+        }
+    }
+
+    val driveConsentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) completeDriveLink()
+        else toast("Google Drive permission was declined")
+    }
+
+    fun beginDriveLink() {
+        if (driveBusy != null) return
+        scope.launch {
+            driveBusy = "Checking Google…"
+            val started = driveService.startAuthorization()
+            driveBusy = null
+            started
+                .onSuccess { auth ->
+                    when (auth) {
+                        // Consent still stands: link silently and take a backup.
+                        is DriveBackupService.Authorization.Granted -> completeDriveLink()
+                        is DriveBackupService.Authorization.UserActionRequired ->
+                            driveConsentLauncher.launch(IntentSenderRequest.Builder(auth.intentSender).build())
+                    }
+                }
+                .onFailure { toast("Google Drive unavailable: ${describeDriveError(it)}") }
         }
     }
 
@@ -101,7 +215,7 @@ fun SettingsScreen() {
             SettingsRow(
                 icon = Icons.Default.Shield,
                 title = "Private by design",
-                subtitle = "All data stays on this device. No cloud, no tracking.",
+                subtitle = "Stays on this device unless you turn on Google Drive backup.",
                 tint = wv.success
             )
             HorizontalDivider(color = wv.borderSubtle)
@@ -126,21 +240,63 @@ fun SettingsScreen() {
         Spacer(Modifier.height(WvDimens.Space4))
 
         // ---- Data Management ----
-        SettingsGroup("Data Management") {
+        var exporting by remember { mutableStateOf(false) }
+        SettingsGroup("Export") {
             SettingsRow(
-                icon = Icons.Default.UploadFile,
-                title = "Export data",
-                subtitle = "Save a JSON + CSV backup to Downloads",
-                tint = wv.primary,
+                icon = Icons.Default.PictureAsPdf,
+                title = if (exporting) "Building PDF…" else "Export PDF (all products)",
+                subtitle = "One passport page per product, saved to Downloads",
+                tint = wv.error,
                 onClick = {
-                    scope.launch {
-                        exportImportService.exportJson()
-                        exportImportService.exportCsv()
-                        Toast.makeText(context, "Data exported (JSON & CSV) to Downloads", Toast.LENGTH_LONG).show()
+                    if (!exporting) scope.launch {
+                        exporting = true
+                        runCatching { PdfExportService(context, app.database).exportPdf() }
+                            .onSuccess {
+                                Toast.makeText(context, "PDF saved to Downloads", Toast.LENGTH_LONG).show()
+                            }
+                            .onFailure {
+                                Toast.makeText(context, "Couldn't create PDF: ${it.message}", Toast.LENGTH_LONG).show()
+                            }
+                        exporting = false
                     }
                 }
             )
             HorizontalDivider(color = wv.borderSubtle)
+            SettingsRow(
+                icon = Icons.Default.TableChart,
+                title = "Export CSV (entire list)",
+                subtitle = "One row per product for spreadsheets",
+                tint = wv.success,
+                onClick = {
+                    if (!exporting) scope.launch {
+                        exporting = true
+                        runCatching { exportImportService.exportCsv() }
+                            .onSuccess { Toast.makeText(context, "CSV saved to Downloads", Toast.LENGTH_LONG).show() }
+                            .onFailure { Toast.makeText(context, "Couldn't create CSV: ${it.message}", Toast.LENGTH_LONG).show() }
+                        exporting = false
+                    }
+                }
+            )
+            HorizontalDivider(color = wv.borderSubtle)
+            SettingsRow(
+                icon = Icons.Default.UploadFile,
+                title = "Export JSON (full backup)",
+                subtitle = "Everything, including service history",
+                tint = wv.primary,
+                onClick = {
+                    if (!exporting) scope.launch {
+                        exporting = true
+                        runCatching { exportImportService.exportJson() }
+                            .onSuccess { Toast.makeText(context, "JSON saved to Downloads", Toast.LENGTH_LONG).show() }
+                            .onFailure { Toast.makeText(context, "Couldn't create JSON: ${it.message}", Toast.LENGTH_LONG).show() }
+                        exporting = false
+                    }
+                }
+            )
+        }
+        Spacer(Modifier.height(WvDimens.Space4))
+
+        SettingsGroup("Data Management") {
             SettingsRow(
                 icon = Icons.Default.UploadFile,
                 title = if (importing) "Reading file…" else "Import data (JSON)",
@@ -148,6 +304,74 @@ fun SettingsScreen() {
                 tint = wv.primary,
                 onClick = { if (!importing) importLauncher.launch("application/json") }
             )
+        }
+        Spacer(Modifier.height(WvDimens.Space4))
+
+        SettingsGroup("Google Drive backup") {
+            if (driveEmail == null) {
+                SettingsRow(
+                    icon = Icons.Default.CloudUpload,
+                    title = driveBusy ?: "Back up to Google Drive",
+                    subtitle = "Asks for Drive permission, then keeps a private backup file",
+                    tint = wv.primary,
+                    onClick = { beginDriveLink() }
+                )
+            } else {
+                if (needRelink) {
+                    SettingsRow(
+                        icon = Icons.Default.LinkOff,
+                        title = "Re-link Google Drive",
+                        subtitle = "Permission expired — tap to sign in again",
+                        tint = wv.warning,
+                        onClick = { beginDriveLink() }
+                    )
+                    HorizontalDivider(color = wv.borderSubtle)
+                }
+                SettingsRow(
+                    icon = Icons.Default.CloudUpload,
+                    title = driveBusy ?: "Back up now",
+                    subtitle = buildString {
+                        append(driveEmail)
+                        append(" · ")
+                        append(
+                            if (lastBackupMs > 0) {
+                                "last backup ${formatBackupTime(lastBackupMs)} (${lastBackupCount} product(s))"
+                            } else {
+                                "no backup yet"
+                            }
+                        )
+                    },
+                    tint = wv.primary,
+                    onClick = { backupNow() }
+                )
+                HorizontalDivider(color = wv.borderSubtle)
+                SettingsRow(
+                    icon = Icons.Default.CloudDownload,
+                    title = "Restore from Google Drive",
+                    subtitle = "Previewed and validated before anything is written",
+                    tint = wv.success,
+                    onClick = { restoreFromDrive() }
+                )
+                HorizontalDivider(color = wv.borderSubtle)
+                SettingsRow(
+                    icon = Icons.Default.CloudOff,
+                    title = "Unlink Google account",
+                    subtitle = "Forgets the permission here; the Drive backup stays",
+                    tint = wv.textSecondary,
+                    onClick = {
+                        if (driveBusy == null) scope.launch {
+                            driveBusy = "Unlinking…"
+                            driveService.unlink()
+                            driveEmail = null
+                            lastBackupMs = 0
+                            lastBackupCount = 0
+                            needRelink = false
+                            driveBusy = null
+                            toast("Google Drive unlinked")
+                        }
+                    }
+                )
+            }
         }
         Spacer(Modifier.height(WvDimens.Space4))
 
@@ -268,3 +492,6 @@ private fun SettingsRow(
         }
     }
 }
+
+private fun formatBackupTime(millis: Long): String =
+    java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(millis))

@@ -119,6 +119,10 @@ dependencies {
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
+    // Google Drive backup: Google Identity Services for the permission-gated account link, plus
+    // Drive v3 REST over the private app-data folder (no heavyweight Google API client needed).
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+
     // Serialization
     val serialization_version = "1.6.2"
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$serialization_version")
